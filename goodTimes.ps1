@@ -41,6 +41,18 @@
 #    Datumsformat gemäß https://msdn.microsoft.com/en-us/library/8kb3ddd4.aspx?cs-lang=vb#content
 #    Standardwert: ddd dd/MM/yyyy
 #    Alias: -d
+# .PARAMETER  joinIntervals
+#    Ignoriert die Pausen zwischen den Intervallen und rechnet nur das erste Intervall und das letzte Intervall zusammen. (0 = ausgeschaltet, 1 = eingeschaltet)
+#    Standardwert: 1
+#    Alias: -j
+# .PARAMETER  maxWorkingHours
+#    Anzahl der maximal erlaubten Stunden pro Tag die gearbeitet werden darf.
+#    Standardwert: 10
+#    Alias: -m
+# .PARAMETER  showLogoff
+#    Zeigt Logoff/Login Events an.
+#    Standardwert: 0
+#    Alias: -i
 #
 # .INPUTS
 #    Keine
@@ -51,9 +63,9 @@
 #    .\goodTimes.ps1
 #    (Aufruf mit Standardwerten)
 # .EXAMPLE
-#    .\goodTimes.ps1 -historyLength 30 -workingHours 8 -lunchBreak 1 -precision 4
+#    .\goodTimes.ps1 -historyLength 30 -workingHours 8 -lunchBreak 1 -precision 4 -joinIntervals 1 -maxWorkingHours 10
 #    (Aufruf mit explizit gesetzten Standardwerten)
-#    (30 Tage anzeigen, Arbeitszeit 8 Stunden täglich, 1 Stunde Mittagspause, Rundung auf 15 (=60/4) Minuten)
+#    (30 Tage anzeigen, Arbeitszeit 8 Stunden täglich, 1 Stunde Mittagspause, Rundung auf 15 (=60/4) Minuten, Intervalle zusammen rechnen, 10h maximale Arbeitszeit)
 # .EXAMPLE
 #    .\goodTimes.ps1 30 -h 8 -b 1 -p 4
 #    (Aufruf mit explizit gesetzten Standardwerten, Kurzschreibweise)
@@ -82,7 +94,19 @@ param (
 #    [ValidateScript({$_ -cmatch '\bd\b' -or ($_ -cmatch '\bdd\b' -and $_ -cmatch '\bM{1,4}\b')})]
     [ValidateScript({$_ -cnotmatch '[HhmsfFt]'})]
     [alias('d')]
-        $dateFormat = 'ddd dd/MM/yyyy' # "/" ist Platzhalter für lokalisierten Trenner
+        $dateFormat = 'ddd dd/MM/yyyy', # "/" ist Platzhalter für lokalisierten Trenner
+    [byte]
+    [validateRange(0, 1)]
+    [alias('j')]
+        $joinIntervals = 1,
+    [byte]
+    [validateRange(0, 255)]
+    [alias('m')]
+        $maxWorkingHours = 10,
+    [byte]
+    [validateRange(0, 1)]
+    [alias('i')]
+        $showLogoff = 0
 )
 
 # helper functions to calculate the required attributes
@@ -90,18 +114,30 @@ param (
 # total uptime
 function getUptimeAttr($entry) {
     $result = New-TimeSpan
-    foreach ($interval in $entry) {
-        $result = $result.add($interval[1] - $interval[0])
-    }
+    
+    if ($joinIntervals -eq 0) {
+        foreach ($interval in $entry) {
+            $result = $result.add($interval[1] - $interval[0])
+        }
+    } else {
+        $result = $entry[-1][-1] - $entry[0][0]
+    }   
+    
     $result
 }
 
 # uptime intervals
 function getIntervalAttr($entry) {
     $result = @()
-    foreach ($interval in $entry) {
-        $result += '{0:HH:mm}-{1:HH:mm}' -f $interval[0], $interval[1]
+    
+    if ($joinIntervals -eq 0) {
+        foreach ($interval in $entry) {
+            $result += '{0:HH:mm}-{1:HH:mm}' -f $interval[0], $interval[1]
+        }
+    } else {
+        $result = '{0:HH:mm}-{1:HH:mm}' -f $entry[0][0], $entry[-1][-1]
     }
+    
     $result -join ', '
 }
 
@@ -114,7 +150,7 @@ function getBookingHoursAttr($interval) {
 # flex time delta
 function getFlexTimeAttr($bookedHours) {
     $delta = $bookedHours - $workinghours
-    $result = $delta.toString('+0.00;-0.00;±0.00')
+    $result = $delta.toString('+0.00;-0.00; 0.00')
     if ($delta -eq 0) {
         write $result, $null
     } elseif ($delta -gt 0) {
@@ -161,13 +197,15 @@ function wait() {
 # helper to determine whether a given EventLogRecord is a boot or wakeup event
 function isStartEvent($event) {
     return ($event.ProviderName -eq 'Microsoft-Windows-Kernel-General' -and $event.ID -eq 12) -or
-            ($event.ProviderName -eq 'Microsoft-Windows-Power-Troubleshooter' -and $event.ID -eq 1)
+            ($event.ProviderName -eq 'Microsoft-Windows-Power-Troubleshooter' -and $event.ID -eq 1) -or
+            ($showLogoff -eq 1 -and $event.ProviderName -eq 'Microsoft-Windows-Winlogon' -and $event.ID -eq 811 -and $event.Message -Match "<Sens>" -and $event.Message -Match "\(5\)")
 }
 
 # helper to determine whether a given EventLogRecord is a shutdown or suspend event
 function isStopEvent($event) {
     return ($event.ProviderName -eq 'Microsoft-Windows-Kernel-General' -and $event.ID -eq 13) -or
-            ($event.ProviderName -eq 'Microsoft-Windows-Kernel-Power' -and $event.ID -eq 42)
+            ($event.ProviderName -eq 'Microsoft-Windows-Kernel-Power' -and $event.ID -eq 42) -or
+            ($showLogoff -eq 1 -and $event.ProviderName -eq 'Microsoft-Windows-Winlogon' -and $event.ID -eq 811 -and $event.Message -Match "<Sens>" -and $event.Message -Match "\(4\)")
 }
 
 
@@ -193,11 +231,17 @@ $filters = (
         LogName = 'System'
         ProviderName = 'Microsoft-Windows-Power-Troubleshooter'
         ID = 1
+    },
+    @{
+        StartTime = $startTime
+        LogName = 'Microsoft-Windows-Winlogon/Operational'
+        ProviderName = 'Microsoft-Windows-Winlogon'
+        ID = 811
     }
 )
 
 # get system log entries for boot/shutdown
-$events = Get-WinEvent -FilterHashtable $filters | select ID, TimeCreated, ProviderName
+$events = Get-WinEvent -FilterHashtable $filters | select ID, TimeCreated, ProviderName, Message
 
 # sort (reverse chronological order) and convert to ArrayList
 [Collections.ArrayList]$events = $events | sort TimeCreated
@@ -271,9 +315,15 @@ foreach ($entry in $log) {
     }
     $lastDayOfWeek = $dayOfWeek
     $attrs = getLogAttrs($entry)
-    print (' {0,5}     ' -f
-        $attrs.bookingHours.toString('#0.00', [Globalization.CultureInfo]::getCultureInfo('de-DE'))
-        ) cyan
+    if ($attrs.bookingHours -gt $maxWorkingHours) {
+        print (' {0,5}     ' -f
+                $attrs.bookingHours.toString('#0.00', [Globalization.CultureInfo]::getCultureInfo('de-DE'))
+              ) red
+    } else {
+        print (' {0,5}     ' -f
+                $attrs.bookingHours.toString('#0.00', [Globalization.CultureInfo]::getCultureInfo('de-DE'))
+              ) cyan
+    }
     print $attrs.flexTime[0] $attrs.flexTime[1]
     print ("{0,6:#0}:{1:00} | {2,-$($screenWidth - 42)}" -f
         $attrs.uptime.hours,
