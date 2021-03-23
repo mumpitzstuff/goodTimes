@@ -71,7 +71,7 @@
 #    (Aufruf mit Standardwerten)
 # .EXAMPLE
 #    .\goodTimes.ps1 install
-#    (Installiert einen Task in der Windows Aufgabenverwaltung und prüft alle 5min, ob die maximal zulässige Anzahl der täglichen Arbeitsstunden bereits erreicht wurde und gibt gegenenfalls eine Warnung aus)
+#    (Installiert einen Task in der Windows Aufgabenverwaltung und prüft alle 5min, ob die maximal zulässige Anzahl der täglichen Arbeitsstunden bereits erreicht wurde und gibt gegebenenfalls eine Warnung aus)
 # .EXAMPLE
 #    .\goodTimes.ps1 -historyLength 30 -workingHours 8 -lunchBreak 1 -precision 4 -joinIntervals 1 -maxWorkingHours 10
 #    (Aufruf mit explizit gesetzten Standardwerten)
@@ -85,7 +85,9 @@
 
 param (
     [string]
-    [Parameter(mandatory = $false)] [ValidateSet('install','uninstall','check')] $mode,
+    [Parameter(mandatory = $false)]
+    [ValidateSet('install','uninstall','check')]
+        $mode,
     [int]
     [validateRange(1, [int]::MaxValue)]
     [alias('l')]
@@ -207,16 +209,16 @@ function wait() {
 
 # helper to determine whether a given EventLogRecord is a boot or wakeup event
 function isStartEvent($event) {
-    return ($event.ProviderName -eq 'Microsoft-Windows-Kernel-General' -and $event.ID -eq 12) -or
-            ($event.ProviderName -eq 'Microsoft-Windows-Power-Troubleshooter' -and $event.ID -eq 1) -or
-            ($showLogoff -eq 1 -and $event.ProviderName -eq 'Microsoft-Windows-Winlogon' -and $event.ID -eq 811 -and $event.Message -Match "<Sens>" -and $event.Message -Match "\(5\)")
+    return ($event.ID -eq 12 -and $event.ProviderName -eq 'Microsoft-Windows-Kernel-General') -or
+            ($event.ID -eq 1 -and $event.ProviderName -eq 'Microsoft-Windows-Power-Troubleshooter') -or
+            ($showLogoff -eq 1 -and $event.ID -eq 811 -and $event.ProviderName -eq 'Microsoft-Windows-Winlogon' -and $event.Message -Match "<Sens>" -and $event.Message -Match "\(5\)")
 }
 
 # helper to determine whether a given EventLogRecord is a shutdown or suspend event
 function isStopEvent($event) {
-    return ($event.ProviderName -eq 'Microsoft-Windows-Kernel-General' -and $event.ID -eq 13) -or
-            ($event.ProviderName -eq 'Microsoft-Windows-Kernel-Power' -and $event.ID -eq 42) -or
-            ($showLogoff -eq 1 -and $event.ProviderName -eq 'Microsoft-Windows-Winlogon' -and $event.ID -eq 811 -and $event.Message -Match "<Sens>" -and $event.Message -Match "\(4\)")
+    return ($event.ID -eq 13 -and $event.ProviderName -eq 'Microsoft-Windows-Kernel-General') -or
+            ($event.ID -eq 42 -and $event.ProviderName -eq 'Microsoft-Windows-Kernel-Power') -or
+            ($showLogoff -eq 1 -and $event.ID -eq 811 -and $event.ProviderName -eq 'Microsoft-Windows-Winlogon' -and $event.Message -Match "<Sens>" -and $event.Message -Match "\(4\)")
 }
 
 
@@ -266,7 +268,7 @@ $filters = (
         StartTime = $startTime
         LogName = 'System'
         ProviderName = 'Microsoft-Windows-Kernel-Power'
-        ID = 42 # what else?
+        ID = 42
     },
     @{
         StartTime = $startTime
@@ -343,7 +345,7 @@ if ($mode -eq 'check') {
         $Shell = new-object -comobject wscript.shell -ErrorAction Stop
         $Shell.popup("Maximum worktime reached in a few minutes.`nYou should leave now!", 0, 'Maximum Worktime Warning', 48 + 4096) | Out-Null
     }
-    
+
     Exit $LASTEXITCODE
 }
 
