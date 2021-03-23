@@ -225,15 +225,9 @@ function isStopEvent($event) {
 if ($mode -eq 'install') {
     "Installation started..."
 
-    $posh = 'powershell'
-    if ($PSVersionTable.PSEdition -eq 'Core') {
-        $posh = 'pwsh'
-    }
-
-    #$script = '-EP Bypass -NoLogo -NonInteractive -WindowStyle Hidden -File "' + $MyInvocation.MyCommand.Definition + '"'
     $script = 'scheduler.vbs'
     $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
-    $action = New-ScheduledTaskAction -Execute $posh -WorkingDirectory $scriptPath -Argument "$script check -l 1 -h $workinghours -b $lunchbreak -p $precision -m $maxWorkingHours"
+    $action = New-ScheduledTaskAction -Execute $script -WorkingDirectory $scriptPath -Argument "check -l 1 -h $workinghours -b $lunchbreak -p $precision -m $maxWorkingHours"
     $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddSeconds(10)) -RepetitionInterval (New-TimeSpan -Minutes 5)
     $settings = New-ScheduledTaskSettingsSet -Hidden -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
     $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings
