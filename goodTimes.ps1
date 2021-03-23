@@ -225,7 +225,7 @@ function isStopEvent($event) {
 if ($mode -eq 'install') {
     "Installation started..."
 
-    $script = 'scheduler.vbs'
+    $script = 'schedule.vbs'
     $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
     $action = New-ScheduledTaskAction -Execute $script -WorkingDirectory $scriptPath -Argument "check -l 1 -h $workinghours -b $lunchbreak -p $precision -m $maxWorkingHours"
     $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddSeconds(10)) -RepetitionInterval (New-TimeSpan -Minutes 5)
