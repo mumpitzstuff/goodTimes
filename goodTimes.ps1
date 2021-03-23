@@ -23,7 +23,7 @@
 #
 # .PARAMETER  historyLength
 #    Anzahl der angezeigten Tage in der Vergangenheit.
-#    Standardwert: 30
+#    Standardwert: 60
 #    Alias: -l
 # .PARAMETER  workingHours
 #    Anzahl der zu arbeitenden Stunden pro Tag.
@@ -31,11 +31,11 @@
 #    Alias: -h
 # .PARAMETER  lunchBreak
 #    Länge der Mittagspause in Stunden pro Tag.
-#    Standardwert: 1
+#    Standardwert: 0.75
 #    Alias: -b
 # .PARAMETER  precision
 #    Rundungspräzision in %, d.h. 1 = Rundung auf volle Stunde, 4 = Rundung auf 60/4=15 Minuten, …, 100 = keine Rundung
-#    Standardwert: 4
+#    Standardwert: 60
 #    Alias: -p
 # .PARAMETER  dateFormat
 #    Datumsformat gemäß https://msdn.microsoft.com/en-us/library/8kb3ddd4.aspx?cs-lang=vb#content
@@ -51,7 +51,7 @@
 #    Alias: -m
 # .PARAMETER  showLogoff
 #    Zeigt Logoff/Login Events an.
-#    Standardwert: 0
+#    Standardwert: 1
 #    Alias: -i
 #
 # .INPUTS
@@ -74,24 +74,25 @@
 #    (14 Tage anzeigen, Arbeitszeit 7 Stunden täglich, 30 Minuten Mittagspause, Rundung auf 10 (=60/6) Minuten)
 
 param (
+    [string]
+    [Parameter(mandatory = $false)] [ValidateSet('install','uninstall','check')] $mode,
     [int]
-    [parameter(Position=0)]
+    [validateRange(1, [int]::MaxValue)]
     [alias('l')]
-        $historyLength = 30,
+        $historyLength = 60,
     [byte]
     [validateRange(0, 24)]
     [alias('h')]
-        $workinghours = 40 / 5,
+        $workinghours = 8,
     [decimal]
     [validateRange(0, 24)]
     [alias('b')]
-        $lunchbreak = 1,
+        $lunchbreak = 0.75,
     [byte]
     [validateRange(1, 100)]
     [alias('p')]
-        $precision = 4,
+        $precision = 60,
     [string]
-#    [ValidateScript({$_ -cmatch '\bd\b' -or ($_ -cmatch '\bdd\b' -and $_ -cmatch '\bM{1,4}\b')})]
     [ValidateScript({$_ -cnotmatch '[HhmsfFt]'})]
     [alias('d')]
         $dateFormat = 'ddd dd/MM/yyyy', # "/" ist Platzhalter für lokalisierten Trenner
@@ -106,7 +107,7 @@ param (
     [byte]
     [validateRange(0, 1)]
     [alias('i')]
-        $showLogoff = 0
+        $showLogoff = 1
 )
 
 # helper functions to calculate the required attributes
@@ -114,22 +115,22 @@ param (
 # total uptime
 function getUptimeAttr($entry) {
     $result = New-TimeSpan
-    
+
     if ($joinIntervals -eq 0) {
         foreach ($interval in $entry) {
             $result = $result.add($interval[1] - $interval[0])
         }
     } else {
         $result = $entry[-1][-1] - $entry[0][0]
-    }   
-    
+    }
+
     $result
 }
 
 # uptime intervals
 function getIntervalAttr($entry) {
     $result = @()
-    
+
     if ($joinIntervals -eq 0) {
         foreach ($interval in $entry) {
             $result += '{0:HH:mm}-{1:HH:mm}' -f $interval[0], $interval[1]
@@ -137,7 +138,7 @@ function getIntervalAttr($entry) {
     } else {
         $result = '{0:HH:mm}-{1:HH:mm}' -f $entry[0][0], $entry[-1][-1]
     }
-    
+
     $result -join ', '
 }
 
@@ -210,6 +211,43 @@ function isStopEvent($event) {
 
 
 
+
+if ($mode -eq 'install') {
+    "Installation started..."
+
+    $posh = 'powershell'
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $posh = 'pwsh'
+    }
+
+    #$script = '-EP Bypass -NoLogo -NonInteractive -WindowStyle Hidden -File "' + $MyInvocation.MyCommand.Definition + '"'
+    $script = 'scheduler.vbs'
+    $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
+    $action = New-ScheduledTaskAction -Execute $posh -WorkingDirectory $scriptPath -Argument "$script check -l 1 -h $workinghours -b $lunchbreak -p $precision -m $maxWorkingHours"
+    $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddSeconds(10)) -RepetitionInterval (New-TimeSpan -Minutes 5)
+    $settings = New-ScheduledTaskSettingsSet -Hidden -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
+    $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings
+
+    if (Get-ScheduledTask 'Check-Worktime' -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask 'Check-Worktime'
+    }
+    Register-ScheduledTask 'Check-Worktime' -InputObject $task | Out-Null
+
+    "Ready."
+
+    Exit $LASTEXITCODE
+}
+if ($mode -eq 'uninstall') {
+    "Deinstallation started ..."
+
+    if (Get-ScheduledTask 'Check-Worktime' -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask 'Check-Worktime'
+    }
+
+    "Ready."
+
+    Exit $LASTEXITCODE
+}
 
 # create an array of filterHashTables that filter boot and shutdown events from the desired period
 $startTime = (get-date).addDays(-$historyLength)
@@ -289,6 +327,22 @@ $log = New-Object Collections.ArrayList
 
 }
 
+if ($mode -eq 'check') {
+    $entry = $log[-1]
+    $attrs = getLogAttrs($entry)
+
+    if ($attrs.bookingHours -ge ($maxWorkingHours + $lunchbreak)) {
+        $Shell = new-object -comobject wscript.shell -ErrorAction Stop
+        $Shell.popup("Maximum worktime reached!!!`nYou must leave now!!!", 0, 'Maximum Worktime', 48 + 4096) | Out-Null
+    }
+    elseif ($attrs.bookingHours -ge ($maxWorkingHours + $lunchbreak - 0.25)) {  # 0.25 = 15 minutes
+        $Shell = new-object -comobject wscript.shell -ErrorAction Stop
+        $Shell.popup("Maximum worktime reached in a few minutes.`nYou should leave now!", 0, 'Maximum Worktime Warning', 48 + 4096) | Out-Null
+    }
+    
+    Exit $LASTEXITCODE
+}
+
 # colors
 $oldFgColor= $host.UI.RawUI.ForegroundColor
 $host.UI.RawUI.ForegroundColor = 'gray'
@@ -315,17 +369,17 @@ foreach ($entry in $log) {
     }
     $lastDayOfWeek = $dayOfWeek
     $attrs = getLogAttrs($entry)
-    if ($attrs.bookingHours -gt $maxWorkingHours) {
-        print (' {0,5}     ' -f
+    if ($attrs.bookingHours -ge ($maxWorkingHours + $lunchbreak)) {
+        print ('  {0,5}  ' -f
                 $attrs.bookingHours.toString('#0.00', [Globalization.CultureInfo]::getCultureInfo('de-DE'))
               ) red
     } else {
-        print (' {0,5}     ' -f
+        print ('  {0,5}  ' -f
                 $attrs.bookingHours.toString('#0.00', [Globalization.CultureInfo]::getCultureInfo('de-DE'))
               ) cyan
     }
-    print $attrs.flexTime[0] $attrs.flexTime[1]
-    print ("{0,6:#0}:{1:00} | {2,-$($screenWidth - 42)}" -f
+    print ('  {0,6}  ' -f $attrs.flexTime[0]) $attrs.flexTime[1]
+    print ("{0,3:#0}:{1:00} | {2,-$($screenWidth - 42)}" -f
         $attrs.uptime.hours,
         [Math]::Round($attrs.uptime.minutes + $attrs.uptime.seconds / 60),
         $attrs.intervals) darkGray
