@@ -8,6 +8,7 @@
 # .NOTES
 #
 #    Copyright 2015 Thomas Rosenau
+#    Enhanced by Achim Winkler
 #
 #    Licensed under the Apache License, Version 2.0 (the "License");
 #    you may not use this file except in compliance with the License.
@@ -21,6 +22,12 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 #
+# .PARAMETER  install
+#    Installiert einen Scheduler in der Windows Aufgabenplanung, um eine Warnung anzuzeigen, wenn die maximal erlaubte Anzahl der Arbeitsstunden erreicht wurde.
+# .PARAMETER  uninstall
+#    Deinstalliert einen zuvor installierten Scheduler wieder.
+# .PARAMETER  check
+#    Prüft ob die maximal zulässige Anzahl der Arbeitsstunden bereits erreicht wurde und gibt gegebenenfalls eine Warnung aus (wird normalerweise nur intern vom Scheduler aufgerufen).
 # .PARAMETER  historyLength
 #    Anzahl der angezeigten Tage in der Vergangenheit.
 #    Standardwert: 60
@@ -63,14 +70,17 @@
 #    .\goodTimes.ps1
 #    (Aufruf mit Standardwerten)
 # .EXAMPLE
+#    .\goodTimes.ps1 install
+#    (Installiert einen Task in der Windows Aufgabenverwaltung und prüft alle 5min, ob die maximal zulässige Anzahl der täglichen Arbeitsstunden bereits erreicht wurde und gibt gegenenfalls eine Warnung aus)
+# .EXAMPLE
 #    .\goodTimes.ps1 -historyLength 30 -workingHours 8 -lunchBreak 1 -precision 4 -joinIntervals 1 -maxWorkingHours 10
 #    (Aufruf mit explizit gesetzten Standardwerten)
 #    (30 Tage anzeigen, Arbeitszeit 8 Stunden täglich, 1 Stunde Mittagspause, Rundung auf 15 (=60/4) Minuten, Intervalle zusammen rechnen, 10h maximale Arbeitszeit)
 # .EXAMPLE
-#    .\goodTimes.ps1 30 -h 8 -b 1 -p 4
+#    .\goodTimes.ps1 -l 30 -h 8 -b 1 -p 4
 #    (Aufruf mit explizit gesetzten Standardwerten, Kurzschreibweise)
 # .EXAMPLE
-#    .\goodTimes.ps1 14 -h 7 -b .5 -p 6
+#    .\goodTimes.ps1 -l 14 -h 7 -b .5 -p 6
 #    (14 Tage anzeigen, Arbeitszeit 7 Stunden täglich, 30 Minuten Mittagspause, Rundung auf 10 (=60/6) Minuten)
 
 param (
