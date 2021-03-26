@@ -20,7 +20,7 @@ or
 ### Command-Line Arguments
 
 * `install`
-  Installs a scheduler to display a warning when the maximum allowed number of working hours has been reached.
+  Installs a scheduler to display a warning when the maximum allowed number of working hours has been reached (default parameters are used if no further parameters are specified).
 * `uninstall`
   Installs a scheduler to display a warning when the maximum allowed number of working hours has been reached.
 * `check`

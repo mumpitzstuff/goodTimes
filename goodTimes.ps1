@@ -285,10 +285,12 @@ $filters = (
 )
 
 # get system log entries for boot/shutdown
-$events = Get-WinEvent -FilterHashtable $filters | select ID, TimeCreated, ProviderName, Message
-
 # sort (reverse chronological order) and convert to ArrayList
-[Collections.ArrayList]$events = $events | sort TimeCreated
+if ($showLogoff -eq 1) {
+    [Collections.ArrayList]$events = Get-WinEvent -FilterHashtable $filters | select ID, TimeCreated, ProviderName, Message | sort TimeCreated
+} else {
+    [Collections.ArrayList]$events = Get-WinEvent -FilterHashtable $filters | select ID, TimeCreated, ProviderName | sort TimeCreated
+}
 
 # create an empty list, which will hold one entry per day
 $log = New-Object Collections.ArrayList
@@ -358,23 +360,26 @@ $host.UI.RawUI.BackgroundColor = 'black'
 # write the output
 $screenWidth = $host.UI.RawUI.BufferSize.width
 
-Write-Host ("{0,-$($screenWidth - 1)}" -f '    Datum     Buchen Gleitzeit  Uptime (incl. Pause)')
-Write-Host ("{0,-$($screenWidth - 1)}" -f '------------- ------ ---------  --------------------')
+Write-Host ("{0,-$($screenWidth - 1)}" -f '    Date      Workt. Flexitime  Uptime (incl. breaks)')
+Write-Host ("{0,-$($screenWidth - 1)}" -f '------------- ------ ---------  ---------------------')
 
 foreach ($entry in $log) {
     $firstStart = $entry[0][0]
     $dayOfWeek = ([int]$firstStart.dayOfWeek + 6) % 7
+    $dayFormatted = $firstStart.Date.toString($dateFormat)
+    $attrs = getLogAttrs($entry)
+    
     if ($dayOfWeek -lt $lastDayOfWeek) {
         println ("{0,-$($screenWidth - 1)}" -f '-------------')
     }
-    $dayFormatted = $firstStart.Date.toString($dateFormat)
+    $lastDayOfWeek = $dayOfWeek
+    
     if ($dayOfWeek -ge 5) {
         Write-Host $dayFormatted -n -backgroundColor darkred -foregroundcolor gray
     } else {
         print $dayFormatted
     }
-    $lastDayOfWeek = $dayOfWeek
-    $attrs = getLogAttrs($entry)
+    
     if ($attrs.bookingHours -ge ($maxWorkingHours + $lunchbreak)) {
         print ('  {0,5}  ' -f
                 $attrs.bookingHours.toString('#0.00', [Globalization.CultureInfo]::getCultureInfo('de-DE'))
@@ -384,7 +389,9 @@ foreach ($entry in $log) {
                 $attrs.bookingHours.toString('#0.00', [Globalization.CultureInfo]::getCultureInfo('de-DE'))
               ) cyan
     }
+    
     print ('  {0,6}  ' -f $attrs.flexTime[0]) $attrs.flexTime[1]
+    
     print ("{0,3:#0}:{1:00} | {2,-$($screenWidth - 42)}" -f
         $attrs.uptime.hours,
         [Math]::Round($attrs.uptime.minutes + $attrs.uptime.seconds / 60),
