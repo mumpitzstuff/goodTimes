@@ -380,7 +380,7 @@ foreach ($entry in $log) {
         print $dayFormatted
     }
     
-    if ($attrs.bookingHours -ge ($maxWorkingHours + $lunchbreak)) {
+    if ($attrs.bookingHours -ge $maxWorkingHours) {
         print ('  {0,5}  ' -f
                 $attrs.bookingHours.toString('#0.00', [Globalization.CultureInfo]::getCultureInfo('de-DE'))
               ) red
