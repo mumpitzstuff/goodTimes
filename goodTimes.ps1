@@ -339,7 +339,11 @@ if ($mode -eq 'check') {
     $entry = $log[-1]
     $attrs = getLogAttrs($entry)
 
-    if ($attrs.bookingHours -ge ($maxWorkingHours)) {
+    if ($attrs.bookingHours -ge $workinghours -and $attrs.bookingHours -lt ($workinghours + 0.08333)) {   # 0.08333 = 5 minutes (interval for check)
+        $Shell = new-object -comobject wscript.shell -ErrorAction Stop
+        $Shell.popup("Normal worktime reached!`nYou can leave now!", 0, 'Normal Worktime', 48 + 4096) | Out-Null
+    }
+    elseif ($attrs.bookingHours -ge $maxWorkingHours) {
         $Shell = new-object -comobject wscript.shell -ErrorAction Stop
         $Shell.popup("Maximum worktime reached!!!`nYou must leave now!!!", 0, 'Maximum Worktime', 48 + 4096) | Out-Null
     }
