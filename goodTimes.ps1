@@ -2,8 +2,8 @@
 #    Good Times!
 #
 # .DESCRIPTION
-#    Dieses Skript zeigt die Uptime-Zeiten der vergangenen Tage an, und berechnet
-#    daraus die in der Zeitmanagement zu buchenden Zeiten, sowie Gleitzeit-Differenzen.
+#    This script displays the uptime times of the past days, and calculates from them the
+#    times to be booked in the time management, as well as flextime differences.
 #
 # .NOTES
 #
@@ -23,71 +23,75 @@
 #    limitations under the License.
 #
 # .PARAMETER  install
-#    Installiert einen Scheduler in der Windows Aufgabenplanung, um eine Warnung anzuzeigen, wenn die maximal erlaubte Anzahl der Arbeitsstunden erreicht wurde.
+#    Installs a scheduler in Windows Task Scheduler to display a warning when the maximum allowed working hours has been reached.
+# .PARAMETER  install_widget
+#    Installs a scheduler in Windows Task Scheduler to display a widget at logon (installation needs admin rights).
 # .PARAMETER  uninstall
-#    Deinstalliert einen zuvor installierten Scheduler wieder.
+#    Uninstalls the scheduler to display a warning when the maximum allowed number of working hours has been reached.
+# .PARAMETER  uninstall_widget
+#    Uninstalls the scheduler to display a widget at logon (deinstallation needs admin rights).
 # .PARAMETER  check
-#    Prüft ob die maximal zulässige Anzahl der Arbeitsstunden bereits erreicht wurde und gibt gegebenenfalls eine Warnung aus (wird normalerweise nur intern vom Scheduler aufgerufen).
+#    Checks if the maximum allowed number of working hours has already been reached and displays a warning if necessary (normally only called internally by the scheduler).
 # .PARAMETER  widget
-#    Startet eine Anzeige der bereits geleisteten Arbeitszeit und der zu leistenden Arbeitszeit.
+#    Launches a widget to display all relevant information about your working time.
 # .PARAMETER  historyLength
-#    Anzahl der angezeigten Tage in der Vergangenheit.
-#    Standardwert: 60
+#    Number of days to show in uptime history.
+#    Default: 60
 #    Alias: -l
 # .PARAMETER  workingHours
-#    Anzahl der zu arbeitenden Stunden pro Tag.
-#    Standardwert: 8
+#    Working hours per day, used for overtime calculation. This will be added to your daily work time.
+#    Default: 8
 #    Alias: -h
 # .PARAMETER  breakfastBreak
-#    Länge der Frühstückspause in Stunden pro Tag.
-#    Standardwert: 0.25
+#    Length of breakfast break in hours per day. This will be added to your daily work time.
+#    Default: 0.25
 #    Alias: -b1
 # .PARAMETER  lunchBreak
-#    Länge der Mittagspause in Stunden pro Tag.
-#    Standardwert: 0.50
+#    Length of lunch break in hours per day. This will be added to your daily work time.
+#    Default: 0.50
 #    Alias: -b2
 # .PARAMETER  precision
-#    Rundungspräzision in %, d.h. 1 = Rundung auf volle Stunde, 4 = Rundung auf 60/4=15 Minuten, …, 100 = keine Rundung
-#    Standardwert: 60
+#    Rounding precision in %, i.e. 1 = rounding to full hour, 4 = rounding to 60/4=15 minutes, ..., 100 = no rounding
+#    Default: 60
 #    Alias: -p
 # .PARAMETER  dateFormat
-#    Datumsformat gemäß https://msdn.microsoft.com/en-us/library/8kb3ddd4.aspx?cs-lang=vb#content
-#    Standardwert: ddd dd/MM/yyyy
+#    Date format according to https://msdn.microsoft.com/en-us/library/8kb3ddd4.aspx?cs-lang=vb#content
+#    Default: ddd dd/MM/yyyy
 #    Alias: -d
 # .PARAMETER  joinIntervals
-#    Ignoriert die Pausen zwischen den Intervallen und rechnet nur das erste Intervall und das letzte Intervall zusammen. (0 = ausgeschaltet, 1 = eingeschaltet)
-#    Standardwert: 1
+#    Ignores the breaks between the intervals and combines only the start of the first interval and the end of the last interval (0 = switched off, 1 = switched on).
+#    Default: 1
 #    Alias: -j
 # .PARAMETER  maxWorkingHours
-#    Anzahl der maximal erlaubten Stunden pro Tag die gearbeitet werden darf.
-#    Standardwert: 10
+#    Number of maximum allowed hours per day that can be worked.
+#    Default: 10
 #    Alias: -m
 # .PARAMETER  showLogoff
-#    Zeigt Logoff/Login Events an.
-#    Standardwert: 1
+#    Show logoff/login events and lockscreen on/off events (0 = switched off, 1 = switched on).
+#    Default: 1
 #    Alias: -i
 #
 # .INPUTS
-#    Keine
+#    None
 # .OUTPUTS
-#    Keine
+#    None
 #
 # .EXAMPLE
 #    .\goodTimes.ps1
-#    (Aufruf mit Standardwerten)
+#    (run with default values)
 # .EXAMPLE
 #    .\goodTimes.ps1 install
-#    (Installiert einen Task in der Windows Aufgabenverwaltung und prüft alle 5min, ob die maximal zulässige Anzahl der täglichen Arbeitsstunden bereits erreicht wurde und gibt gegebenenfalls eine Warnung aus)
+#    (Installs a task in the Windows Task Manager and checks every 5min if the maximum allowed number of daily working hours has already been reached and displays a warning if necessary.)
 # .EXAMPLE
-#    .\goodTimes.ps1 -historyLength 30 -workingHours 8 -lunchBreak 1 -precision 4 -joinIntervals 1 -maxWorkingHours 10
-#    (Aufruf mit explizit gesetzten Standardwerten)
-#    (30 Tage anzeigen, Arbeitszeit 8 Stunden täglich, 1 Stunde Mittagspause, Rundung auf 15 (=60/4) Minuten, Intervalle zusammen rechnen, 10h maximale Arbeitszeit)
+#    .\goodTimes.ps1 -historyLength 60 -workingHours 8 -breakfastBreak 0.25 -lunchBreak 0.5 -precision 60 -joinIntervals 1 -maxWorkingHours 10 -showLogoff 1
+#    (Call with explicitly set default values)
+#    (Show 60 days, working time 8 hours daily, 15 minutes breakfast break, 30 minutes lunch break, rounding to 1 minute, join intervals, 10h maximum working hours, show logon/logoff and lockscreen events)
 # .EXAMPLE
-#    .\goodTimes.ps1 -l 30 -h 8 -b 1 -p 4
-#    (Aufruf mit explizit gesetzten Standardwerten, Kurzschreibweise)
+#    .\goodTimes.ps1 -l 60 -h 8 -b1 0.25 -B2 0.5 -p 60 -m 10 -i 1
+#    (Call with explicitly set default values, short form)
 # .EXAMPLE
-#    .\goodTimes.ps1 -l 14 -h 7 -b .5 -p 6
-#    (14 Tage anzeigen, Arbeitszeit 7 Stunden täglich, 30 Minuten Mittagspause, Rundung auf 10 (=60/6) Minuten)
+#    .\goodTimes.ps1 -l 14 -h 7 -b1 0 -b2 0.5 -p 6
+#    (show 14 days, working time 7 hours daily, breakfast break disabled, 30 minutes lunch break, rounding to 10 (=60/6) minutes)
 
 param (
     [string]
@@ -1345,7 +1349,7 @@ if ($mode -eq 'install') {
 
     $vbscript = 'schedule.vbs'
     $vbscriptPath = split-path -parent $MyInvocation.MyCommand.Definition
-    $action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "check -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours"
+    $action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "check -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
     $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddSeconds(10)) -RepetitionInterval (New-TimeSpan -Minutes 5)
     $settings = New-ScheduledTaskSettingsSet -Hidden -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
     $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings
@@ -1375,7 +1379,7 @@ elseif ($mode -eq 'install_widget') {
 
     $vbscript = 'schedule.vbs'
     $vbscriptPath = split-path -parent $MyInvocation.MyCommand.Definition
-    $action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "widget -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours"
+    $action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "widget -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
     $trigger = New-ScheduledTaskTrigger -AtLogon
     $settings = New-ScheduledTaskSettingsSet -Hidden -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
     $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings

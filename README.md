@@ -10,39 +10,53 @@ It reads the required information from the system log and outputs it as a table.
 then
 
 * Start PowerShell
-* Type `.\goodTimes.ps1` 
+* Type `.\goodTimes.ps1 <any parameters>` 
 
 or
 
-* Run `powershell.exe -file goodTimes.ps1`
+* Run `powershell.exe -file goodTimes.ps1 <any parameters>`
 
 
 ### Command-Line Arguments
 
 * `install`
-  Installs a scheduler to display a warning when the maximum allowed number of working hours has been reached (default parameters are used if no further parameters are specified).
+  Installs a scheduler in Windows Task Scheduler to display a warning when the maximum allowed working hours has been reached (default parameters are used if no further parameters are specified).
+* `install_widget`
+  Installs a scheduler in Windows Task Scheduler to display a widget at logon (installation needs admin rights).
 * `uninstall`
-  Installs a scheduler to display a warning when the maximum allowed number of working hours has been reached.
+  Uninstalls the scheduler to display a warning when the maximum allowed number of working hours has been reached.
+* `uninstall_widget`
+  Uninstalls the scheduler to display a widget at logon (deinstallation needs admin rights).
 * `check`
-  Checks if the maximum allowed number of working hours has already been reached and gives a warning if necessary (normally only called internally by the scheduler).
+  Checks if the maximum allowed number of working hours has already been reached and displays a warning if necessary (normally only called internally by the scheduler).
+* `widget`
+  Launches a widget to display all relevant information about your working time.
 * `-historyLength` (Alias `-l`)
   Number of days to show in uptime history. Defaults to `60`.
 * `-workingHours` (Alias `-h`)
   Working hours per day, used for overtime calculation. Defaults to `8`.
 * `-breakfastBreak` (Alias `-b1`)
-  Length of breakfast break in hours. This will be subtracted from your work time. Defaults to `0.25`.
+  Length of breakfast break in hours per day. This will be added to your daily work time. Defaults to `0.25`.
 * `-lunchBreak` (Alias `-b2`)
-  Length of lunch break in hours. This will be subtracted from your work time. Defaults to `0.50`.
+  Length of lunch break in hours per day. This will be added to your daily work time. Defaults to `0.50`.
 * `-precision` (Alias `-p`)
   Rounding precision in percent, where 1 = round to the hour, 2 = round to 30 minutes, etc. Defaults to `60`.
 * `-dateFormat` (Alias `-d`)
-  Date format as defined in [the .NET reference][2]. Defaults to `ddd dd/MM/yyyy`.
+  Date format according to [the .NET reference][2]. Defaults to `ddd dd/MM/yyyy`.
 * `-joinIntervals` (Alias `-j`)
-  Ignores the breaks between intervals and joins all intervals together. Defaults to `1`.
+  Ignores the breaks between the intervals and combines only the start of the first interval and the end of the last interval (0 = switched off, 1 = switched on). Defaults to `1`.
 * `-maxWorkingHours` (Alias `-m`)
-  Maximum working hours per day. Defaults to `10`.
+  Number of maximum allowed hours per day that can be worked. Defaults to `10`.
 * `-showLogoff` (Alias `-i`)
-  Show Logon/Logoff events (joinIntervals must also be set to 0 to activate this feature). Defaults to `1`.
+  Show logoff/login events and lockscreen on/off events (0 = switched off, 1 = switched on). Defaults to `1`.
+
+### Script Settings
+* `$cultureInfo` (Default `de-DE`)
+  Can be set e.g. to en-GB or en-US.
+* `$breakDeduction1` (Default `3.0`)
+  After how many hours should the breakfastBreak be deducted.
+* `$breakDeduction2` (Default `6.0`)
+  After how many hours should the lunchBreak be deducted.
 
 ### Example Pictures
 ![normal worktime reached message](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/normal_worktime_reached.png?raw=true)

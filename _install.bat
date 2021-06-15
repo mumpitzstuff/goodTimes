@@ -10,9 +10,9 @@ echo [1] Install warning message (possible breaks are part of worktime (check wo
 ping -n 1 localhost>nul
 echo [2] Install widget (possible breaks are part of worktime (check worktime of runJoined.bat)) - admin rights needed
 ping -n 1 localhost>nul
-echo [3] Install warning message (breaks are not part of worktime (check worktime of runBreaks.bat))
+echo [3] Install warning message (breaks are NOT part of worktime (check worktime of runBreaks.bat))
 ping -n 1 localhost>nul
-echo [4] Install widget (breaks are not part of worktime (check worktime of runBreaks.bat)) - admin rights needed
+echo [4] Install widget (breaks are NOT part of worktime (check worktime of runBreaks.bat)) - admin rights needed
 ping -n 1 localhost>nul
 echo [5] Uninstall warning message
 ping -n 1 localhost>nul
@@ -39,7 +39,7 @@ echo.
 _runJoined.bat install
 echo.
 pause
-goto END
+goto menu
 
 :Install2
 cls
@@ -47,7 +47,7 @@ echo.
 _showWidgetJoined.bat install_widget
 echo.
 pause
-goto END
+goto menu
 
 :Install3
 cls
@@ -55,7 +55,7 @@ echo.
 _runBreaks.bat install
 echo.
 pause
-goto END
+goto menu
 
 :Install4
 cls
@@ -63,22 +63,22 @@ echo.
 _showWidgetBreaks.bat install_widget
 echo.
 pause
-goto END
+goto menu
 
 :Uninstall1
 cls
 echo.
-powershell -file .\goodTimes.ps1 uninstall
+powershell -EP Bypass -file .\goodTimes.ps1 uninstall
 echo.
 pause
-goto END
+goto menu
 
 :Uninstall2
 cls
 echo.
-powershell -file .\goodTimes.ps1 uninstall_widget
+powershell -EP Bypass -file .\goodTimes.ps1 uninstall_widget
 echo.
 pause
-goto END
+goto menu
 
 :END
