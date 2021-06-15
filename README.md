@@ -44,10 +44,17 @@ or
 * `-showLogoff` (Alias `-i`)
   Show Logon/Logoff events (joinIntervals must also be set to 0 to activate this feature). Defaults to `1`.
 
+### Example Pictures
+![normal worktime reached message](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/normal_worktime_reached.png?raw=true)
+![max worktime reached warning](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/max_worktime_reached.png?raw=true)
+![max worktime reached error](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/max_worktime_reached1.png?raw=true)
+![widget with unplanned breaks](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/widget_with_unplanned_breaks.png?raw=true)
+![widget without unplanned breaks](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/widget_without_unplanned_breaks.png?raw=true)
+
 
 ## i18n
 
-Sorry, this version is in German only, so if you want some internationalization, you can easily edit the script. 
+Sorry, this version is in English only, so if you want some internationalization, you can easily edit the script. 
  
  
 [1]: http://stackoverflow.com/questions/10635/why-are-my-powershell-scripts-not-running
