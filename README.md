@@ -1,7 +1,7 @@
 # Good Times!
 
 This is a little PowerShell script that helps you track your working hours by analyzing your machine's uptime.
-It reads the required information from the system log and outputs it as a table.
+It reads the required information from the system log and outputs it as a table.\
 The script does not store any data on your computer. It only uses the data that Windows automatically provides.
 
 ## Usage
