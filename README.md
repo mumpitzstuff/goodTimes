@@ -2,8 +2,11 @@
 
 This is a little PowerShell script that helps you track your working hours by analyzing your machine's uptime.
 It reads the required information from the system log and outputs it as a table.
+The script does not store any data on your computer. It only uses the data that Windows automatically provides.
 
 ## Usage
+
+Use the batch files to get a first impression!
 
 * Read and follow the instructions on [PowerShell’s execution policy][1]
 
@@ -61,7 +64,7 @@ or
 ### Example Pictures
 ![normal worktime reached message](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/normal_worktime_reached.png?raw=true)
 ![max worktime reached warning](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/max_worktime_reached.png?raw=true)
-![max worktime reached error](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/max_worktime_reached1.png?raw=true)
+![max worktime reached error](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/max_worktime_reached1.png?raw=true)\
 ![widget with unplanned breaks](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/widget_with_unplanned_breaks.png?raw=true)
 ![widget without unplanned breaks](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/widget_without_unplanned_breaks.png?raw=true)
 

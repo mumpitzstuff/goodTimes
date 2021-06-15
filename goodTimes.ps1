@@ -4,6 +4,7 @@
 # .DESCRIPTION
 #    This script displays the uptime times of the past days, and calculates from them the
 #    times to be booked in the time management, as well as flextime differences.
+#    The script does not store any data on your computer. It only uses the data that Windows automatically provides.
 #
 # .NOTES
 #
