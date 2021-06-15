@@ -29,8 +29,10 @@ or
   Number of days to show in uptime history. Defaults to `60`.
 * `-workingHours` (Alias `-h`)
   Working hours per day, used for overtime calculation. Defaults to `8`.
-* `-lunchBreak` (Alias `-b`)
-  Length of lunch break in hours. This will be subtracted from your work time. Defaults to `0.75`.
+* `-breakfastBreak` (Alias `-b1`)
+  Length of breakfast break in hours. This will be subtracted from your work time. Defaults to `0.25`.
+* `-lunchBreak` (Alias `-b2`)
+  Length of lunch break in hours. This will be subtracted from your work time. Defaults to `0.50`.
 * `-precision` (Alias `-p`)
   Rounding precision in percent, where 1 = round to the hour, 2 = round to 30 minutes, etc. Defaults to `60`.
 * `-dateFormat` (Alias `-d`)

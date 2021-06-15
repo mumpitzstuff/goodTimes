@@ -28,6 +28,8 @@
 #    Deinstalliert einen zuvor installierten Scheduler wieder.
 # .PARAMETER  check
 #    Prüft ob die maximal zulässige Anzahl der Arbeitsstunden bereits erreicht wurde und gibt gegebenenfalls eine Warnung aus (wird normalerweise nur intern vom Scheduler aufgerufen).
+# .PARAMETER  widget
+#    Startet eine Anzeige der bereits geleisteten Arbeitszeit und der zu leistenden Arbeitszeit.
 # .PARAMETER  historyLength
 #    Anzahl der angezeigten Tage in der Vergangenheit.
 #    Standardwert: 60
@@ -36,10 +38,14 @@
 #    Anzahl der zu arbeitenden Stunden pro Tag.
 #    Standardwert: 8
 #    Alias: -h
+# .PARAMETER  breakfastBreak
+#    Länge der Frühstückspause in Stunden pro Tag.
+#    Standardwert: 0.25
+#    Alias: -b1
 # .PARAMETER  lunchBreak
 #    Länge der Mittagspause in Stunden pro Tag.
-#    Standardwert: 0.75
-#    Alias: -b
+#    Standardwert: 0.50
+#    Alias: -b2
 # .PARAMETER  precision
 #    Rundungspräzision in %, d.h. 1 = Rundung auf volle Stunde, 4 = Rundung auf 60/4=15 Minuten, …, 100 = keine Rundung
 #    Standardwert: 60
@@ -86,20 +92,24 @@
 param (
     [string]
     [Parameter(mandatory = $false)]
-    [ValidateSet('install','uninstall','check')]
+    [ValidateSet('install', 'uninstall', 'install_widget', 'uninstall_widget', 'check', 'widget')]
         $mode,
     [int]
     [validateRange(1, [int]::MaxValue)]
     [alias('l')]
         $historyLength = 60,
-    [byte]
-    [validateRange(0, 24)]
+    [decimal]
+    [validateRange(0, 12)]
     [alias('h')]
         $workinghours = 8,
     [decimal]
-    [validateRange(0, 24)]
-    [alias('b')]
-        $lunchbreak = 0.75,
+    [validateRange(0, 12)]
+    [alias('b1')]
+        $breakfastBreak = 0.25,
+    [decimal]
+    [validateRange(0, 12)]
+    [alias('b2')]
+        $lunchBreak = 0.50,
     [byte]
     [validateRange(1, 100)]
     [alias('p')]
@@ -112,8 +122,8 @@ param (
     [validateRange(0, 1)]
     [alias('j')]
         $joinIntervals = 1,
-    [byte]
-    [validateRange(0, 255)]
+    [decimal]
+    [validateRange(0, 12)]
     [alias('m')]
         $maxWorkingHours = 10,
     [byte]
@@ -124,6 +134,11 @@ param (
 
 # global configuration variables (e.g. en-GB or en-US would be possible)
 $cultureInfo = 'de-DE'
+# after how many hours should the breakfastBreak be deducted
+$breakDeduction1 = 3.0
+# after how many hours should the lunchBreak be deducted
+$breakDeduction2 = 6.0
+
 
 # helper functions to calculate the required attributes
 
@@ -159,7 +174,13 @@ function getIntervalAttr($entry) {
 
 # booking hours
 function getBookingHoursAttr($interval) {
-    $netTime = $interval.totalHours - $lunchbreak
+    $netTime = $interval.totalHours
+    if ($interval.totalHours -ge $breakDeduction1) {
+        $netTime -= $breakfastBreak
+    }
+    if ($interval.totalHours -ge $breakDeduction2) {
+        $netTime -= $lunchBreak
+    }
     [math]::Round($netTime * $precision) / $precision
 }
 
@@ -224,14 +245,534 @@ function isStopEvent($event) {
             ($showLogoff -eq 1 -and $event.ID -eq 811 -and $event.ProviderName -eq 'Microsoft-Windows-Winlogon' -and $event.Message -Match "<Sens>" -and $event.Message -Match "\(4\)")
 }
 
+function Show-Widget {
+
+    Param
+    (
+        [Parameter(Mandatory=$true, Position=0)]
+        [double] $startTime,
+        [Parameter(Mandatory=$true, Position=1)]
+        [double] $normalWorkHours,
+        [Parameter(Mandatory=$true, Position=2)]
+        [double] $maxWorkHours,
+        [Parameter(Mandatory=$true, Position=3)]
+        [double] $break1,
+        [Parameter(Mandatory=$true, Position=4)]
+        [double] $break2,
+        [Parameter(Mandatory=$true, Position=5)]
+        [double] $breakDeduction1,
+        [Parameter(Mandatory=$true, Position=6)]
+        [double] $breakDeduction2,
+        [Parameter(Mandatory=$true, Position=7)]
+        [double] $unplannedBreaks
+    )
+
+    Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
+
+[xml]$xaml = @"
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="goodTimes" Height="110" Width="110" WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" AllowsTransparency="True" Background="Transparent" Opacity="1" Topmost="True">
+    <Canvas x:Name="Canvas" ToolTipService.InitialShowDelay="1000" ToolTipService.ShowDuration="10000" ToolTipService.Placement="Bottom" ToolTipService.HasDropShadow="False" ToolTipService.IsEnabled="True">
+        <Path x:Name="Path_NormalWorktime" Stroke="Black" StrokeThickness="1" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="1" SnapsToDevicePixels="True">
+            <Path.Data>
+                <PathGeometry>
+                    <PathGeometry.Figures>
+                        <PathFigureCollection>
+                            <PathFigure x:Name="PathFigure_NormalWorktime" IsClosed= "True" StartPoint="0,0">
+                                <PathFigure.Segments>
+                                    <PathSegmentCollection>
+                                        <ArcSegment x:Name="ArcSegment_NormalWorktime" Size="0,0" IsLargeArc="True" IsStroked="False" SweepDirection="Clockwise" Point="0,0" />
+                                        <LineSegment x:Name="LineSegmentA_NormalWorktime" Point="0,0" />
+                                        <LineSegment x:Name="LineSegmentB_NormalWorktime" Point="0,0" />
+                                    </PathSegmentCollection>
+                                </PathFigure.Segments>
+                            </PathFigure>
+                        </PathFigureCollection>
+                    </PathGeometry.Figures>
+                </PathGeometry>
+            </Path.Data>
+            <Path.Fill>
+                <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
+                    <GradientStop Color="#FFFF80" Offset="0.0" />
+                    <GradientStop Color="#FFFF00" Offset="1.0" />
+                </RadialGradientBrush>
+            </Path.Fill>
+        </Path>
+        <Path x:Name="Path_MaxWorktime" Stroke="Black" StrokeThickness="1" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="1" SnapsToDevicePixels="True">
+            <Path.Data>
+                <PathGeometry>
+                    <PathGeometry.Figures>
+                        <PathFigureCollection>
+                            <PathFigure x:Name="PathFigure_MaxWorktime" IsClosed= "True" StartPoint="0,0">
+                                <PathFigure.Segments>
+                                    <PathSegmentCollection>
+                                        <ArcSegment x:Name="ArcSegment_MaxWorktime" Size="0,0" IsLargeArc="True" IsStroked="False" SweepDirection="Clockwise" Point="0,0" />
+                                        <LineSegment x:Name="LineSegmentA_MaxWorktime" Point="0,0" />
+                                        <LineSegment x:Name="LineSegmentB_MaxWorktime" Point="0,0" IsStroked="False" />
+                                    </PathSegmentCollection>
+                                </PathFigure.Segments>
+                            </PathFigure>
+                        </PathFigureCollection>
+                    </PathGeometry.Figures>
+                </PathGeometry>
+            </Path.Data>
+            <Path.Fill>
+                <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
+                    <GradientStop Color="#FF8080" Offset="0.0" />
+                    <GradientStop Color="#FF4040" Offset="1.0" />
+                </RadialGradientBrush>
+            </Path.Fill>
+        </Path>
+        <Path x:Name="Path_Break1" Stroke="Black" StrokeThickness="1" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="1" SnapsToDevicePixels="True">
+            <Path.Data>
+                <PathGeometry>
+                    <PathGeometry.Figures>
+                        <PathFigureCollection>
+                            <PathFigure x:Name="PathFigure_Break1" IsClosed= "True" StartPoint="0,0">
+                                <PathFigure.Segments>
+                                    <PathSegmentCollection>
+                                        <ArcSegment x:Name="ArcSegment_Break1" Size="0,0" IsLargeArc="True" IsStroked="False" SweepDirection="Clockwise" Point="0,0" />
+                                        <LineSegment x:Name="LineSegmentA_Break1" Point="0,0" />
+                                        <LineSegment x:Name="LineSegmentB_Break1" Point="0,0" />
+                                    </PathSegmentCollection>
+                                </PathFigure.Segments>
+                            </PathFigure>
+                        </PathFigureCollection>
+                    </PathGeometry.Figures>
+                </PathGeometry>
+            </Path.Data>
+            <Path.Fill>
+                <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
+                    <GradientStop Color="#80FF80" Offset="0.0" />
+                    <GradientStop Color="#40FF40" Offset="1.0" />
+                </RadialGradientBrush>
+            </Path.Fill>
+        </Path>
+        <Path x:Name="Path_Break2" Stroke="Black" StrokeThickness="1" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="1" SnapsToDevicePixels="True">
+            <Path.Data>
+                <PathGeometry>
+                    <PathGeometry.Figures>
+                        <PathFigureCollection>
+                            <PathFigure x:Name="PathFigure_Break2" IsClosed= "True" StartPoint="0,0">
+                                <PathFigure.Segments>
+                                    <PathSegmentCollection>
+                                        <ArcSegment x:Name="ArcSegment_Break2" Size="0,0" IsLargeArc="True" IsStroked="False" SweepDirection="Clockwise" Point="0,0" />
+                                        <LineSegment x:Name="LineSegmentA_Break2" Point="0,0" />
+                                        <LineSegment x:Name="LineSegmentB_Break2" Point="0,0" />
+                                    </PathSegmentCollection>
+                                </PathFigure.Segments>
+                            </PathFigure>
+                        </PathFigureCollection>
+                    </PathGeometry.Figures>
+                </PathGeometry>
+            </Path.Data>
+            <Path.Fill>
+                <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
+                    <GradientStop Color="#80FF80" Offset="0.0" />
+                    <GradientStop Color="#40FF40" Offset="1.0" />
+                </RadialGradientBrush>
+            </Path.Fill>
+        </Path>
+        <Path x:Name="Path_ActualWorktime" Stroke="Black" StrokeThickness="1" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="0.8" SnapsToDevicePixels="True">
+            <Path.Data>
+                <PathGeometry>
+                    <PathGeometry.Figures>
+                        <PathFigureCollection>
+                            <PathFigure x:Name="PathFigure_ActualWorktime" IsClosed= "True" StartPoint="0,0">
+                                <PathFigure.Segments>
+                                    <PathSegmentCollection>
+                                        <ArcSegment x:Name="ArcSegment_ActualWorktime" Size="0,0" IsLargeArc="True" SweepDirection="Clockwise" Point="0,0" />
+                                        <LineSegment x:Name="LineSegmentA_ActualWorktime" Point="0,0" />
+                                        <LineSegment x:Name="LineSegmentB_ActualWorktime" Point="0,0" IsStroked="False" />
+                                    </PathSegmentCollection>
+                                </PathFigure.Segments>
+                            </PathFigure>
+                        </PathFigureCollection>
+                    </PathGeometry.Figures>
+                </PathGeometry>
+            </Path.Data>
+            <Path.Fill>
+                <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
+                    <GradientStop Color="#0080FF" Offset="0.0" />
+                    <GradientStop Color="#0040FF" Offset="1.0" />
+                </RadialGradientBrush>
+            </Path.Fill>
+        </Path>
+        <Ellipse Stroke="Black" StrokeThickness="1" SnapsToDevicePixels="True" Height="101" Width="101" />
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="4" />
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="3">
+            <Line.RenderTransform>
+                <RotateTransform Angle="30" CenterX="50" CenterY="50" />
+            </Line.RenderTransform>
+        </Line>
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="3">
+            <Line.RenderTransform>
+                <RotateTransform Angle="60" CenterX="50" CenterY="50" />
+            </Line.RenderTransform>
+        </Line>
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="4">
+            <Line.RenderTransform>
+                <RotateTransform Angle="90" CenterX="50" CenterY="50" />
+            </Line.RenderTransform>
+        </Line>
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="3">
+            <Line.RenderTransform>
+                <RotateTransform Angle="120" CenterX="50" CenterY="50" />
+            </Line.RenderTransform>
+        </Line>
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="3">
+            <Line.RenderTransform>
+                <RotateTransform Angle="150" CenterX="50" CenterY="50" />
+            </Line.RenderTransform>
+        </Line>
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="4">
+            <Line.RenderTransform>
+                <RotateTransform Angle="180" CenterX="50" CenterY="50" />
+            </Line.RenderTransform>
+        </Line>
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="3">
+            <Line.RenderTransform>
+                <RotateTransform Angle="210" CenterX="50" CenterY="50" />
+            </Line.RenderTransform>
+        </Line>
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="3">
+            <Line.RenderTransform>
+                <RotateTransform Angle="240" CenterX="50" CenterY="50" />
+            </Line.RenderTransform>
+        </Line>
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="4">
+            <Line.RenderTransform>
+                <RotateTransform Angle="270" CenterX="50" CenterY="50" />
+            </Line.RenderTransform>
+        </Line>
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="3">
+            <Line.RenderTransform>
+                <RotateTransform Angle="300" CenterX="50" CenterY="50" />
+            </Line.RenderTransform>
+        </Line>
+        <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="3">
+            <Line.RenderTransform>
+                <RotateTransform Angle="330" CenterX="50" CenterY="50" />
+            </Line.RenderTransform>
+        </Line>
+
+        <Line Stroke="Gray" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" SnapsToDevicePixels="True" Opacity="0.9" X1="105" Y1="3" X2="99" Y2="9" />
+        <Line Stroke="Gray" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" SnapsToDevicePixels="True" Opacity="0.9" X1="99" Y1="3" X2="105" Y2="9" />
+        <Rectangle x:Name="Close_Widget" Stroke="Gray" StrokeThickness="1" Fill="Gray" SnapsToDevicePixels="True" Opacity="0.01" Width="8" Height="8" Canvas.Left="98" Canvas.Top="2" />
+
+        <Line x:Name="Minimize_Icon" Stroke="Gray" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" SnapsToDevicePixels="True" Opacity="0.9" X1="90" Y1="9" X2="96" Y2="9" />
+        <Rectangle x:Name="Maximize_Icon" Stroke="Gray" StrokeThickness="2" SnapsToDevicePixels="True" Opacity="0.9" Width="8" Height="8" Canvas.Left="89" Canvas.Top="2" />
+
+        <Rectangle x:Name="MinMax_Widget" Stroke="Gray" StrokeThickness="1" Fill="Gray" SnapsToDevicePixels="True" Opacity="0.01" Width="8" Height="8" Canvas.Left="89" Canvas.Top="2" />
+
+        <Canvas.Effect>
+            <DropShadowEffect Color="Black" ShadowDepth="3" BlurRadius="6" Opacity="0.4" />
+        </Canvas.Effect>
+
+        <Canvas.ToolTip>
+            <ToolTip Background="Silver">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Foreground="#0080FF" Width="100">Start time:</TextBlock>
+                        <TextBlock x:Name="Tooltip_StartTime" Foreground="#0080FF" Width="35" TextAlignment="Right">00:00</TextBlock>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Foreground="#FFFF00" Width="100">Normal worktime:</TextBlock>
+                        <TextBlock x:Name="Tooltip_NormalWorktime" Foreground="#FFFF00" Width="35" TextAlignment="Right">00:00</TextBlock>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Foreground="#FF4040" Width="100">Max worktime:</TextBlock>
+                        <TextBlock x:Name="Tooltip_MaxWorktime" Foreground="#FF4040" Width="35" TextAlignment="Right">00:00</TextBlock>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Foreground="#0040FF" Width="100">Time to work:</TextBlock>
+                        <TextBlock x:Name="Tooltip_TimeToWork" Foreground="#0040FF" Width="35" TextAlignment="Right">00:00</TextBlock>
+                    </StackPanel>
+                    <StackPanel x:Name="Tooltip_OptionalUnplannedBreaks" Orientation="Horizontal">
+                        <TextBlock Foreground="White" Width="100">Unplanned breaks:</TextBlock>
+                        <TextBlock x:Name="Tooltip_UnplannedBreaks" Foreground="WHite" Width="35" TextAlignment="Right">00:00</TextBlock>
+                    </StackPanel>
+                </StackPanel>
+            </ToolTip>
+        </Canvas.ToolTip>
+    </Canvas>
+</Window>
+"@
+
+    $ComputeCartesianCoordinate =
+    {
+        Param
+        (
+            [Parameter(Mandatory=$true, Position=0)]
+            [double] $angle,
+            [Parameter(Mandatory=$true, Position=1)]
+            [double] $radius
+        )
+
+        $angleRad = ([Math]::pi / 180.0) * ($angle - 90.0)
+
+        # x,y
+        return ($radius * [Math]::cos($angleRad)), ($radius * [Math]::sin($angleRad))
+    }
+
+    $GetPieCoordinates =
+    {
+        Param
+        (
+            [Parameter(Mandatory=$true, Position=0)]
+            [int] $centreX,
+            [Parameter(Mandatory=$true, Position=1)]
+            [int] $centreY,
+            [Parameter(Mandatory=$true, Position=2)]
+            [double] $rotationAngle,
+            [Parameter(Mandatory=$true, Position=3)]
+            [double] $wedgeAngle,
+            [Parameter(Mandatory=$true, Position=4)]
+            [double] $radius,
+            [Parameter(Mandatory=$true, Position=5)]
+            [double] $innerRadius
+        )
+
+        # 0.5 is added to increase the sharpness of the stroke
+        # https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Applying_styles_and_colors
+        $innerArcStartPointX, $innerArcStartPointY = &$ComputeCartesianCoordinate $rotationAngle $innerRadius
+        $innerArcStartPointX += $centreX + 0.5
+        $innerArcStartPointY += $centreY + 0.5
+
+        $innerArcEndPointX, $innerArcEndPointY = &$ComputeCartesianCoordinate ($rotationAngle + $wedgeAngle) $innerRadius
+        $innerArcEndPointX += $centreX + 0.5
+        $innerArcEndPointY += $centreY + 0.5
+
+        $outerArcStartPointX, $outerArcStartPointY = &$ComputeCartesianCoordinate $rotationAngle $radius
+        $outerArcStartPointX += $centreX + 0.5
+        $outerArcStartPointY += $centreY + 0.5
+
+        $outerArcEndPointX, $outerArcEndPointY = &$ComputeCartesianCoordinate ($rotationAngle + $wedgeAngle) $radius
+        $outerArcEndPointX += $centreX + 0.5
+        $outerArcEndPointY += $centreY + 0.5
+
+        return $innerArcStartPointX, $innerArcStartPointY, $innerArcEndPointX, $innerArcEndPointY, $outerArcStartPointX, $outerArcStartPointY, $outerArcEndPointX, $outerArcEndPointY
+    }
+
+    $UpdateWidget =
+    {
+        # hour = 360 / 12 = 30
+        # minute = 360 / 12 / 60 = 0.5
+
+        #normal worktime
+        $start = $startTime
+        $rotationAngle = $start * 30
+        $end = $normalWorkHours + $break1 + $break2
+        $wedgeAngle = $end * 30
+
+        $innerArcStartPointX, $innerArcStartPointY, $innerArcEndPointX, $innerArcEndPointY, $outerArcStartPointX, $outerArcStartPointY, $outerArcEndPointX, $outerArcEndPointY = &$GetPieCoordinates 50 50 $rotationAngle $wedgeAngle 50 0
+        $PathFigure_NormalWorktime.StartPoint = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
+        $ArcSegment_NormalWorktime.IsLargeArc = ($wedgeAngle -gt 180)
+        $ArcSegment_NormalWorktime.Size = [System.Windows.Size]::new(50,50)
+        $ArcSegment_NormalWorktime.Point = [System.Windows.Point]::new($outerArcEndPointX,$outerArcEndPointY)
+        $LineSegmentA_NormalWorktime.Point = [System.Windows.Point]::new($innerArcEndPointX,$innerArcEndPointY)
+        $LineSegmentB_NormalWorktime.Point = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
+
+        #max worktime
+        $start = $startTime + $end
+        $rotationAngle = $start * 30
+        $end = $maxWorkHours - $normalWorkHours
+        $wedgeAngle = $end * 30
+
+        $innerArcStartPointX, $innerArcStartPointY, $innerArcEndPointX, $innerArcEndPointY, $outerArcStartPointX, $outerArcStartPointY, $outerArcEndPointX, $outerArcEndPointY = &$GetPieCoordinates 50 50 $rotationAngle $wedgeAngle 50 0
+        $PathFigure_MaxWorktime.StartPoint = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
+        $ArcSegment_MaxWorktime.IsLargeArc = ($wedgeAngle -gt 180)
+        $ArcSegment_MaxWorktime.Size = [System.Windows.Size]::new(50,50)
+        $ArcSegment_MaxWorktime.Point = [System.Windows.Point]::new($outerArcEndPointX,$outerArcEndPointY)
+        $LineSegmentA_MaxWorktime.Point = [System.Windows.Point]::new($innerArcEndPointX,$innerArcEndPointY)
+        $LineSegmentB_MaxWorktime.Point = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
+
+        #break1
+        if ($break1 -gt 0) {
+            $start = $startTime + $breakDeduction1
+            $rotationAngle = $start * 30
+            $end = $break1
+            $wedgeAngle = $end * 30
+
+            $innerArcStartPointX, $innerArcStartPointY, $innerArcEndPointX, $innerArcEndPointY, $outerArcStartPointX, $outerArcStartPointY, $outerArcEndPointX, $outerArcEndPointY = &$GetPieCoordinates 50 50 $rotationAngle $wedgeAngle 50 0
+            $PathFigure_Break1.StartPoint = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
+            $ArcSegment_Break1.IsLargeArc = ($wedgeAngle -gt 180)
+            $ArcSegment_Break1.Size = [System.Windows.Size]::new(50,50)
+            $ArcSegment_Break1.Point = [System.Windows.Point]::new($outerArcEndPointX,$outerArcEndPointY)
+            $LineSegmentA_Break1.Point = [System.Windows.Point]::new($innerArcEndPointX,$innerArcEndPointY)
+            $LineSegmentB_Break1.Point = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
+        }
+        else {
+            $Path_Break1.Visibility = [System.Windows.Visibility]::Hidden;
+        }
+
+        #break2
+        if ($break2 -gt 0) {
+            $start = $startTime + $breakDeduction2
+            $rotationAngle = $start * 30
+            $end = $break2
+            $wedgeAngle = $end * 30
+
+            $innerArcStartPointX, $innerArcStartPointY, $innerArcEndPointX, $innerArcEndPointY, $outerArcStartPointX, $outerArcStartPointY, $outerArcEndPointX, $outerArcEndPointY = &$GetPieCoordinates 50 50 $rotationAngle $wedgeAngle 50 0
+            $PathFigure_Break2.StartPoint = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
+            $ArcSegment_Break2.IsLargeArc = ($wedgeAngle -gt 180)
+            $ArcSegment_Break2.Size = [System.Windows.Size]::new(50,50)
+            $ArcSegment_Break2.Point = [System.Windows.Point]::new($outerArcEndPointX,$outerArcEndPointY)
+            $LineSegmentA_Break2.Point = [System.Windows.Point]::new($innerArcEndPointX,$innerArcEndPointY)
+            $LineSegmentB_Break2.Point = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
+        }
+        else {
+            $Path_Break2.Visibility = [System.Windows.Visibility]::Hidden;
+        }
+
+        #actual worktime
+        $start = $startTime
+        $rotationAngle = $start * 30
+        $end = (Get-Date).TimeOfDay.TotalHours - $startTime - $unplannedBreaks
+        $wedgeAngle = $end * 30
+
+        $innerArcStartPointX, $innerArcStartPointY, $innerArcEndPointX, $innerArcEndPointY, $outerArcStartPointX, $outerArcStartPointY, $outerArcEndPointX, $outerArcEndPointY = &$GetPieCoordinates 50 50 $rotationAngle $wedgeAngle 42 0
+        $PathFigure_ActualWorktime.StartPoint = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
+        $ArcSegment_ActualWorktime.IsLargeArc = ($wedgeAngle -gt 180)
+        $ArcSegment_ActualWorktime.Size = [System.Windows.Size]::new(42,42)
+        $ArcSegment_ActualWorktime.Point = [System.Windows.Point]::new($outerArcEndPointX,$outerArcEndPointY)
+        $LineSegmentA_ActualWorktime.Point = [System.Windows.Point]::new($innerArcEndPointX,$innerArcEndPointY)
+        $LineSegmentB_ActualWorktime.Point = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
+
+        #tooltip
+        $Tooltip_StartTime.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($startTime * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        $Tooltip_NormalWorktime.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes (($startTime * 60) + ($normalWorkHours * 60) + ($break1 * 60) + ($break2 * 60)))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        $Tooltip_MaxWorktime.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes (($startTime * 60) + ($maxWorkHours * 60) + ($break1 * 60) + ($break2 * 60)))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        $worktime = (Get-Date).TimeOfDay.TotalHours - $startTime - $unplannedBreaks
+        $worktimeAdj = $worktime
+        if ($worktime -ge $breakDeduction1) {
+            $worktimeAdj -= $break1
+        }
+        if ($worktime -ge $breakDeduction2) {
+            $worktimeAdj -= $break2
+        }
+        if ($worktimeAdj -le $normalWorkHours) {
+            $Tooltip_TimeToWork.Text = "-" + ((New-Object DateTime) + (New-TimeSpan -Minutes (($normalWorkHours * 60) - ($worktimeAdj * 60)))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        }
+        else {
+            $Tooltip_TimeToWork.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes (($normalWorkHours * 60) - ($worktimeAdj * 60))).Negate()).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        }
+
+        if ($Widget.Topmost -eq $true) {
+            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Visible;
+            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Hidden;
+        }
+        else {
+            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Hidden;
+            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Visible;
+        }
+
+        $Widget.UpdateLayout()
+    }
+
+    $SyncWidget =
+    {
+        $log = &$script:updateWorktimes
+        $entry = $log[-1]
+        $attrs = getLogAttrs($entry)
+
+        $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
+
+        # takeover the update
+        $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+    }
+
+    #Read the form
+    $Reader = (New-Object System.Xml.XmlNodeReader $xaml)
+    $Widget = [Windows.Markup.XamlReader]::Load($reader)
+
+    #AutoFind all controls
+    $xaml.SelectNodes("//*[@*[contains(translate(name(.),'n','N'),'Name')]]")  | ForEach-Object {
+        New-Variable -Name $_.Name -Value $Widget.FindName($_.Name) -Force
+    }
+
+    $Widget.Add_MouseLeftButtonDown({
+        $Widget.DragMove()
+    })
+
+    $Close_Widget.Add_MouseLeftButtonDown({
+        $Widget.Close()
+    })
+
+    $MinMax_Widget.Add_MouseLeftButtonDown({
+        if ($Widget.Topmost -eq $true) {
+            $Widget.Topmost = $false
+
+            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Hidden;
+            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Visible;
+
+            $Widget.UpdateLayout()
+        }
+        else {
+            $Widget.Topmost = $true
+
+            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Visible;
+            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Hidden;
+
+            $Widget.UpdateLayout()
+        }
+    })
+
+    #<Ellipse x:Name="SuspendResume_Worktime" Width="8" Height="8" Fill="Green" Stroke="Black" StrokeThickness="0" SnapsToDevicePixels="True" Opacity="0.9" Canvas.Left="2" Canvas.Top="2" />
+    #$SuspendResume_Worktime.Add_MouseLeftButtonDown({
+    #    if ($SuspendResume_Worktime.Fill -eq [System.Windows.Media.Brushes]::Green) {
+    #        $SuspendResume_Worktime.Fill = [System.Windows.Media.Brushes]::Red
+    #    }
+    #    else {
+    #        $SuspendResume_Worktime.Fill = [System.Windows.Media.Brushes]::Green
+    #    }
+    #})
+
+    $Widget.Add_MouseDoubleClick({
+        #$_.Button -eq [System.Windows.Forms.MouseButtons]::Left
+        #$Widget.Close()
+    })
+
+    $updateTimer = [System.Windows.Threading.DispatcherTimer]::new()
+    $updateTimer.Interval = New-TimeSpan -Minutes 1
+    $updateTimer.Add_Tick($UpdateWidget)
+    $updateTimer.Start()
+
+    $syncTimer
+    if ($joinIntervals -eq 0) {
+        $syncTimer = [System.Windows.Threading.DispatcherTimer]::new()
+        $syncTimer.Interval = New-TimeSpan -Minutes 15
+        $syncTimer.Add_Tick($SyncWidget)
+        $syncTimer.Start()
+
+        $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+    }
+    else {
+        $Tooltip_OptionalUnplannedBreaks.Visibility = [System.Windows.Visibility]::Collapsed;
+    }
+
+    &$UpdateWidget
+
+    $Widget.ShowDialog() | Out-Null
+
+    $updateTimer.Stop()
+    if ($joinIntervals -eq 0) {
+        $syncTimer.Stop()
+    }
+}
+
 function New-WPFMessageBox {
 
     # For examples for use, see my blog:
     # https://smsagent.wordpress.com/2017/08/24/a-customisable-wpf-messagebox-for-powershell/
-    
+
     # CHANGES
     # 2017-09-11 - Added some required assemblies in the dynamic parameters to avoid errors when run from the PS console host.
-    
+
     # Define Parameters
     [CmdletBinding()]
     Param
@@ -297,32 +838,32 @@ function New-WPFMessageBox {
 
     # Dynamically Populated parameters
     DynamicParam {
-        
-        # Add assemblies for use in PS Console 
+
+        # Add assemblies for use in PS Console
         Add-Type -AssemblyName System.Drawing, PresentationCore
-        
+
         # ContentBackground
         $ContentBackground = 'ContentBackground'
         $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
         $ParameterAttribute.Mandatory = $False
-        $AttributeCollection.Add($ParameterAttribute) 
+        $AttributeCollection.Add($ParameterAttribute)
         $RuntimeParameterDictionary = New-Object System.Management.Automation.RuntimeDefinedParameterDictionary
-        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name 
-        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         $AttributeCollection.Add($ValidateSetAttribute)
         $PSBoundParameters.ContentBackground = "White"
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ContentBackground, [string], $AttributeCollection)
         $RuntimeParameterDictionary.Add($ContentBackground, $RuntimeParameter)
-        
+
 
         # FontFamily
         $FontFamily = 'FontFamily'
         $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
         $ParameterAttribute.Mandatory = $False
-        $AttributeCollection.Add($ParameterAttribute)  
-        $arrSet = [System.Drawing.FontFamily]::Families.Name | Select -Skip 1 
+        $AttributeCollection.Add($ParameterAttribute)
+        $arrSet = [System.Drawing.FontFamily]::Families.Name | Select -Skip 1
         $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         $AttributeCollection.Add($ValidateSetAttribute)
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($FontFamily, [string], $AttributeCollection)
@@ -334,9 +875,9 @@ function New-WPFMessageBox {
         $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
         $ParameterAttribute.Mandatory = $False
-        $AttributeCollection.Add($ParameterAttribute) 
-        $arrSet = [System.Windows.FontWeights] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name 
-        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        $AttributeCollection.Add($ParameterAttribute)
+        $arrSet = [System.Windows.FontWeights] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         $AttributeCollection.Add($ValidateSetAttribute)
         $PSBoundParameters.TitleFontWeight = "Normal"
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($TitleFontWeight, [string], $AttributeCollection)
@@ -347,23 +888,23 @@ function New-WPFMessageBox {
         $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
         $ParameterAttribute.Mandatory = $False
-        $AttributeCollection.Add($ParameterAttribute) 
-        $arrSet = [System.Windows.FontWeights] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name 
-        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        $AttributeCollection.Add($ParameterAttribute)
+        $arrSet = [System.Windows.FontWeights] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         $AttributeCollection.Add($ValidateSetAttribute)
         $PSBoundParameters.ContentFontWeight = "Normal"
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ContentFontWeight, [string], $AttributeCollection)
         $RuntimeParameterDictionary.Add($ContentFontWeight, $RuntimeParameter)
-        
+
 
         # ContentTextForeground
         $ContentTextForeground = 'ContentTextForeground'
         $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
         $ParameterAttribute.Mandatory = $False
-        $AttributeCollection.Add($ParameterAttribute) 
-        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name 
-        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        $AttributeCollection.Add($ParameterAttribute)
+        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         $AttributeCollection.Add($ValidateSetAttribute)
         $PSBoundParameters.ContentTextForeground = "Black"
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ContentTextForeground, [string], $AttributeCollection)
@@ -374,9 +915,9 @@ function New-WPFMessageBox {
         $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
         $ParameterAttribute.Mandatory = $False
-        $AttributeCollection.Add($ParameterAttribute) 
-        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name 
-        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        $AttributeCollection.Add($ParameterAttribute)
+        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         $AttributeCollection.Add($ValidateSetAttribute)
         $PSBoundParameters.TitleTextForeground = "Black"
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($TitleTextForeground, [string], $AttributeCollection)
@@ -387,9 +928,9 @@ function New-WPFMessageBox {
         $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
         $ParameterAttribute.Mandatory = $False
-        $AttributeCollection.Add($ParameterAttribute) 
-        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name 
-        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        $AttributeCollection.Add($ParameterAttribute)
+        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         $AttributeCollection.Add($ValidateSetAttribute)
         $PSBoundParameters.BorderBrush = "Black"
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($BorderBrush, [string], $AttributeCollection)
@@ -401,9 +942,9 @@ function New-WPFMessageBox {
         $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
         $ParameterAttribute.Mandatory = $False
-        $AttributeCollection.Add($ParameterAttribute) 
-        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name 
-        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        $AttributeCollection.Add($ParameterAttribute)
+        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         $AttributeCollection.Add($ValidateSetAttribute)
         $PSBoundParameters.TitleBackground = "White"
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($TitleBackground, [string], $AttributeCollection)
@@ -414,9 +955,9 @@ function New-WPFMessageBox {
         $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
         $ParameterAttribute.Mandatory = $False
-        $AttributeCollection.Add($ParameterAttribute) 
-        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name 
-        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        $AttributeCollection.Add($ParameterAttribute)
+        $arrSet = [System.Drawing.Brushes] | Get-Member -Static -MemberType Property | Select -ExpandProperty Name
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         $AttributeCollection.Add($ValidateSetAttribute)
         $PSBoundParameters.ButtonTextForeground = "Black"
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($ButtonTextForeground, [string], $AttributeCollection)
@@ -428,19 +969,19 @@ function New-WPFMessageBox {
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
         $ParameterAttribute.Mandatory = $False
         #$ParameterAttribute.Position = 14
-        $AttributeCollection.Add($ParameterAttribute) 
+        $AttributeCollection.Add($ParameterAttribute)
         $arrSet = (Get-ChildItem "$env:SystemDrive\Windows\Media" -Filter Windows* | Select -ExpandProperty Name).Replace('.wav','')
-        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)    
+        $ValidateSetAttribute = New-Object System.Management.Automation.ValidateSetAttribute($arrSet)
         $AttributeCollection.Add($ValidateSetAttribute)
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($Sound, [string], $AttributeCollection)
         $RuntimeParameterDictionary.Add($Sound, $RuntimeParameter)
-        
+
         # TopMost
         $TopMost = 'TopMost'
         $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
         $ParameterAttribute = New-Object System.Management.Automation.ParameterAttribute
         $ParameterAttribute.Mandatory = $False
-        $AttributeCollection.Add($ParameterAttribute) 
+        $AttributeCollection.Add($ParameterAttribute)
         $PSBoundParameters.TopMost = "True"
         $RuntimeParameter = New-Object System.Management.Automation.RuntimeDefinedParameter($TopMost, [string], $AttributeCollection)
         $RuntimeParameterDictionary.Add($TopMost, $RuntimeParameter)
@@ -451,12 +992,12 @@ function New-WPFMessageBox {
     Begin {
         Add-Type -AssemblyName PresentationFramework
     }
-    
+
     Process {
 
 # Define the XAML markup
 [XML]$Xaml = @"
-<Window 
+<Window
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Name="Window" Title="" SizeToContent="WidthAndHeight" WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent" Opacity="1" Topmost="$($PSBoundParameters.TopMost)">
@@ -495,7 +1036,7 @@ function New-WPFMessageBox {
                 <Grid.OpacityMask>
                     <VisualBrush Visual="{Binding ElementName=Mask}"/>
                 </Grid.OpacityMask>
-                <StackPanel Name="StackPanel" >                   
+                <StackPanel Name="StackPanel" >
                     <TextBox Name="TitleBar" IsReadOnly="True" IsHitTestVisible="False" Text="$Title" Padding="10" FontFamily="$($PSBoundParameters.FontFamily)" FontSize="$TitleFontSize" Foreground="$($PSBoundParameters.TitleTextForeground)" FontWeight="$($PSBoundParameters.TitleFontWeight)" Background="$($PSBoundParameters.TitleBackground)" HorizontalAlignment="Stretch" VerticalAlignment="Center" Width="Auto" HorizontalContentAlignment="Center" BorderThickness="0"/>
                     <DockPanel Name="ContentHost" Margin="0,10,0,10"  >
                     </DockPanel>
@@ -611,7 +1152,7 @@ function New-WPFMessageBox {
         {
             $Content = $Content.Replace('"',"'")
         }
-        
+
         # Use a text box for a string value...
         $ContentTextBox = [Windows.Markup.XamlReader]::Load((New-Object -TypeName System.Xml.XmlNodeReader -ArgumentList $ContentTextXaml))
         $Window.FindName('ContentHost').AddChild($ContentTextBox)
@@ -621,12 +1162,12 @@ function New-WPFMessageBox {
         # ...or add a WPF element as a child
         Try
         {
-            $Window.FindName('ContentHost').AddChild($Content) 
+            $Window.FindName('ContentHost').AddChild($Content)
         }
         Catch
         {
             $_
-        }        
+        }
     }
 
     # Enable window to move when dragged
@@ -648,7 +1189,7 @@ function New-WPFMessageBox {
             $This.Activate()
         })
     }
-    
+
 
     # Stop the dispatcher timer if exists
     If ($OnClosed)
@@ -670,7 +1211,7 @@ function New-WPFMessageBox {
             }
         })
     }
-    
+
 
     # If a window host is provided assign it as the owner
     If ($WindowHost)
@@ -715,14 +1256,97 @@ function New-WPFMessageBox {
     }
 }
 
+$updateWorktimes = {
+    # create an array of filterHashTables that filter boot and shutdown events from the desired period
+    $startTime = (get-date).addDays(-$historyLength)
+    
+    $filters = (
+        @{
+            StartTime = $startTime
+            LogName = 'System'
+            ProviderName = 'Microsoft-Windows-Kernel-General'
+            ID = 12, 13
+        },
+        @{
+            StartTime = $startTime
+            LogName = 'System'
+            ProviderName = 'Microsoft-Windows-Kernel-Power'
+            ID = 42
+        },
+        @{
+            StartTime = $startTime
+            LogName = 'System'
+            ProviderName = 'Microsoft-Windows-Power-Troubleshooter'
+            ID = 1
+        },
+        @{
+            StartTime = $startTime
+            LogName = 'Microsoft-Windows-Winlogon/Operational'
+            ProviderName = 'Microsoft-Windows-Winlogon'
+            ID = 811
+        }
+    )
+
+    # get system log entries for boot/shutdown
+    # sort (reverse chronological order) and convert to ArrayList
+    if ($showLogoff -eq 1) {
+        [Collections.ArrayList]$events = Get-WinEvent -FilterHashtable $filters | select ID, TimeCreated, ProviderName, Message | sort TimeCreated
+    } else {
+        [Collections.ArrayList]$events = Get-WinEvent -FilterHashtable $filters | select ID, TimeCreated, ProviderName | sort TimeCreated
+    }
+
+    # create an empty list, which will hold one entry per day
+    $log = New-Object Collections.ArrayList
+    
+    # fill the $log list by searching for start/stop pairs
+    :outer while ($events.count -ge 2) {
+        if ($log) {
+            # find the latest stop event
+            do {
+                if ($events.count -lt 2) {
+                    # if there is only one stop event left, there can't be any more start event (e.g. when system log was cleared)
+                    break outer
+                }
+                $end = $events[$events.count - 1]
+                $events.remove($end)
+            } while (-not (isStopEvent $end)) # consecutive start events. This may happen when the system crashes (power failure, etc.)
+        } else {
+            # add a fake shutdown event for this very moment
+            $end = @{TimeCreated = get-date}
+        }
+
+        # find the corresponding start event
+        do {
+            if ($events.count -lt 1) {
+                # no more events left
+                break outer
+            }
+            $start = $events[$events.count - 1]
+            $events.remove($start)
+        } while (-not (isStartEvent $start)) # not sure if there can indeed be consecutive stop events, but let's better be safe than sorry
+
+        # check if the current start/stop pair has occurred on the same day as the previous one
+        $last = $log[0]
+        $interval = ,($start.TimeCreated, $end.TimeCreated)
+        if ($last -and $start.TimeCreated.Date.equals($last[0][0].Date)) {
+            # combine uptimes
+            $log[0] = $interval + $last
+        } else {
+            # create new day
+            $log.insert(0, $interval)
+        }
+    }
+    
+    return $log
+}
 
 
 if ($mode -eq 'install') {
     "Installation started..."
 
-    $script = 'schedule.vbs'
-    $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
-    $action = New-ScheduledTaskAction -Execute $script -WorkingDirectory $scriptPath -Argument "check -l 1 -h $workinghours -b $lunchbreak -p $precision -m $maxWorkingHours"
+    $vbscript = 'schedule.vbs'
+    $vbscriptPath = split-path -parent $MyInvocation.MyCommand.Definition
+    $action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "check -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours"
     $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddSeconds(10)) -RepetitionInterval (New-TimeSpan -Minutes 5)
     $settings = New-ScheduledTaskSettingsSet -Hidden -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
     $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings
@@ -736,7 +1360,7 @@ if ($mode -eq 'install') {
 
     Exit $LASTEXITCODE
 }
-if ($mode -eq 'uninstall') {
+elseif ($mode -eq 'uninstall') {
     "Deinstallation started ..."
 
     if (Get-ScheduledTask 'Check-Worktime' -ErrorAction SilentlyContinue) {
@@ -747,92 +1371,51 @@ if ($mode -eq 'uninstall') {
 
     Exit $LASTEXITCODE
 }
+elseif ($mode -eq 'install_widget') {
+    "Widget installation started..."
 
-# create an array of filterHashTables that filter boot and shutdown events from the desired period
-$startTime = (get-date).addDays(-$historyLength)
-$filters = (
-    @{
-        StartTime = $startTime
-        LogName = 'System'
-        ProviderName = 'Microsoft-Windows-Kernel-General'
-        ID = 12, 13
-    },
-    @{
-        StartTime = $startTime
-        LogName = 'System'
-        ProviderName = 'Microsoft-Windows-Kernel-Power'
-        ID = 42
-    },
-    @{
-        StartTime = $startTime
-        LogName = 'System'
-        ProviderName = 'Microsoft-Windows-Power-Troubleshooter'
-        ID = 1
-    },
-    @{
-        StartTime = $startTime
-        LogName = 'Microsoft-Windows-Winlogon/Operational'
-        ProviderName = 'Microsoft-Windows-Winlogon'
-        ID = 811
+    $vbscript = 'schedule.vbs'
+    $vbscriptPath = split-path -parent $MyInvocation.MyCommand.Definition
+    $action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "widget -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours"
+    $trigger = New-ScheduledTaskTrigger -AtLogon
+    $settings = New-ScheduledTaskSettingsSet -Hidden -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
+    $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings
+
+    if (Get-ScheduledTask 'Start-WorktimeWidget' -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask 'Start-WorktimeWidget'
     }
-)
+    Register-ScheduledTask 'Start-WorktimeWidget' -InputObject $task | Out-Null
 
-# get system log entries for boot/shutdown
-# sort (reverse chronological order) and convert to ArrayList
-if ($showLogoff -eq 1) {
-    [Collections.ArrayList]$events = Get-WinEvent -FilterHashtable $filters | select ID, TimeCreated, ProviderName, Message | sort TimeCreated
-} else {
-    [Collections.ArrayList]$events = Get-WinEvent -FilterHashtable $filters | select ID, TimeCreated, ProviderName | sort TimeCreated
+    "Ready."
+
+    Exit $LASTEXITCODE
+}
+elseif ($mode -eq 'uninstall_widget') {
+    "Widget deinstallation started ..."
+
+    if (Get-ScheduledTask 'Start-WorktimeWidget' -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask 'Start-WorktimeWidget'
+    }
+
+    "Ready."
+
+    Exit $LASTEXITCODE
 }
 
-# create an empty list, which will hold one entry per day
-$log = New-Object Collections.ArrayList
 
-# fill the $log list by searching for start/stop pairs
-:outer while ($events.count -ge 2) {
-    if ($log) {
-        # find the latest stop event
-        do {
-            if ($events.count -lt 2) {
-                # if there is only one stop event left, there can't be any more start event (e.g. when system log was cleared)
-                break outer
-            }
-            $end = $events[$events.count - 1]
-            $events.remove($end)
-        } while (-not (isStopEvent $end)) # consecutive start events. This may happen when the system crashes (power failure, etc.)
-    } else {
-        # add a fake shutdown event for this very moment
-        $end = @{TimeCreated = get-date}
-    }
-
-    # find the corresponding start event
-    do {
-        if ($events.count -lt 1) {
-            # no more events left
-            break outer
-        }
-        $start = $events[$events.count - 1]
-        $events.remove($start)
-    } while (-not (isStartEvent $start)) # not sure if there can indeed be consecutive stop events, but let's better be safe than sorry
-
-    # check if the current start/stop pair has occurred on the same day as the previous one
-    $last = $log[0]
-    $interval = ,($start.TimeCreated, $end.TimeCreated)
-    if ($last -and $start.TimeCreated.Date.equals($last[0][0].Date)) {
-        # combine uptimes
-        $log[0] = $interval + $last
-    } else {
-        # create new day
-        $log.insert(0, $interval)
-    }
-
-}
+$log = &$updateWorktimes
 
 if ($mode -eq 'check') {
     $entry = $log[-1]
     $attrs = getLogAttrs($entry)
-    $minutes = [Math]::Round($maxWorkingHours * 60) + [Math]::Round($lunchbreak * 60) - [Math]::Round(($attrs.uptime.hours * 60) + $attrs.uptime.minutes + ($attrs.uptime.seconds / 60))
-    
+    $minutes = [Math]::Round($maxWorkingHours * 60) - [Math]::Round($attrs.uptime.TotalMinutes)
+    if ($attrs.uptime.TotalHours -ge $breakDeduction1) {
+        $minutes += [Math]::Round($breakfastBreak * 60)
+    }
+    if ($attrs.uptime.TotalHours -ge $breakDeduction2) {
+        $minutes += [Math]::Round($lunchBreak * 60)
+    }
+
     if ($attrs.bookingHours -ge $workinghours -and $attrs.bookingHours -lt ($workinghours + 0.08333)) {   # 0.08333 = 5 minutes (interval for check)
         $time = ((Get-Date) + (New-TimeSpan -Minutes $minutes)).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($cultureInfo))
 
@@ -859,12 +1442,13 @@ if ($mode -eq 'check') {
             TitleTextForeground = 'WhiteSmoke'
             TitleFontWeight = 'UltraBold'
             Sound = 'Windows Exclamation'
+            Timeout = 300
         }
         $absMinutes = [Math]::Abs($minutes)
         Try {
             New-WPFMessageBox @ErrorMsgParams -Content "Maximum worktime reached since $absMinutes minutes!!!&#10;&#10;You must leave now!!!"
         }
-        Catch {        
+        Catch {
             $Shell = new-object -comobject wscript.shell -ErrorAction Stop
             $Shell.popup("Maximum worktime reached since $absMinutes minutes!!!`n`nYou must leave now!!!", 0, 'Maximum Worktime', 48 + 4096) | Out-Null
         }
@@ -876,6 +1460,7 @@ if ($mode -eq 'check') {
             TitleBackground = 'Orange'
             TitleTextForeground = 'Black'
             Sound = 'Windows Exclamation'
+            Timeout = 300
         }
         Try {
             New-WPFMessageBox @WarningParams -Content "Maximum worktime reached in $minutes minutes.&#10;&#10;You should leave now!"
@@ -885,7 +1470,29 @@ if ($mode -eq 'check') {
             $Shell.popup("Maximum worktime reached in $minutes minutes.`n`nYou should leave now!", 0, 'Maximum Worktime Warning', 48 + 4096) | Out-Null
         }
     }
-    
+
+    Exit $LASTEXITCODE
+}
+elseif ($mode -eq 'widget') {
+    $entry = $log[-1]
+    $attrs = getLogAttrs($entry)
+
+    Add-Type -Name Window -Namespace Console -MemberDefinition '
+    [DllImport("Kernel32.dll")]
+    public static extern IntPtr GetConsoleWindow();
+    [DllImport("User32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
+    '
+
+    $hWindow = [Console.Window]::GetConsoleWindow()
+    [Console.Window]::ShowWindow($hWindow, 0) | Out-Null
+
+    $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
+
+    Show-Widget $entry[0][0].TimeOfDay.TotalHours $workinghours $maxWorkingHours $breakfastBreak $lunchBreak $breakDeduction1 $breakDeduction2 $unplannedBreaks
+
+    #[Console.Window]::ShowWindow($hWindow, 4) | Out-Null
+
     Exit $LASTEXITCODE
 }
 
