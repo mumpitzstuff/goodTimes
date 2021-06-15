@@ -62,6 +62,7 @@ or
   After how many hours should the lunchBreak be deducted.
 
 ### Example Pictures
+![worktimes](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/worktimes.png?raw=true)\
 ![normal worktime reached message](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/normal_worktime_reached.png?raw=true)
 ![max worktime reached warning](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/max_worktime_reached.png?raw=true)
 ![max worktime reached error](https://github.com/mumpitzstuff/goodTimes/blob/master/docu/max_worktime_reached1.png?raw=true)\
