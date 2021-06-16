@@ -1490,7 +1490,7 @@ elseif ($mode -eq 'widget') {
     '
 
     $hWindow = [Console.Window]::GetConsoleWindow()
-    #[Console.Window]::ShowWindow($hWindow, 0) | Out-Null
+    [Console.Window]::ShowWindow($hWindow, 0) | Out-Null
 
     Write-Host $entry
     
