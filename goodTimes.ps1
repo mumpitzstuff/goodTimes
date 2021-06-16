@@ -682,9 +682,10 @@ function Show-Widget {
     $SyncWidget =
     {
         $log = &$script:updateWorktimes
-        $attrs = getLogAttrs($log)
+        $entry = $log[-1]
+        $attrs = getLogAttrs($entry)
 
-        $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $log[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
+        $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
 
         # takeover the update
         $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
@@ -1410,7 +1411,8 @@ elseif ($mode -eq 'uninstall_widget') {
 $log = &$updateWorktimes
 
 if ($mode -eq 'check') {
-    $attrs = getLogAttrs($log)
+    $entry = $log[-1]
+    $attrs = getLogAttrs($entry)
     $minutes = [Math]::Round($maxWorkingHours * 60) - [Math]::Round($attrs.uptime.TotalMinutes)
     if ($attrs.uptime.TotalHours -ge $breakDeduction1) {
         $minutes += [Math]::Round($breakfastBreak * 60)
@@ -1477,7 +1479,8 @@ if ($mode -eq 'check') {
     Exit $LASTEXITCODE
 }
 elseif ($mode -eq 'widget') {
-    $attrs = getLogAttrs($log)
+    $entry = $log[-1]   
+    $attrs = getLogAttrs($entry)
 
     Add-Type -Name Window -Namespace Console -MemberDefinition '
     [DllImport("Kernel32.dll")]
@@ -1487,11 +1490,13 @@ elseif ($mode -eq 'widget') {
     '
 
     $hWindow = [Console.Window]::GetConsoleWindow()
-    [Console.Window]::ShowWindow($hWindow, 0) | Out-Null
+    #[Console.Window]::ShowWindow($hWindow, 0) | Out-Null
 
-    $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $log[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
+    Write-Host $entry
+    
+    $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
 
-    Show-Widget $log[0][0].TimeOfDay.TotalHours $workinghours $maxWorkingHours $breakfastBreak $lunchBreak $breakDeduction1 $breakDeduction2 $unplannedBreaks
+    Show-Widget $entry[0][0].TimeOfDay.TotalHours $workinghours $maxWorkingHours $breakfastBreak $lunchBreak $breakDeduction1 $breakDeduction2 $unplannedBreaks
 
     #[Console.Window]::ShowWindow($hWindow, 4) | Out-Null
 
