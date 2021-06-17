@@ -1264,7 +1264,7 @@ function New-WPFMessageBox {
 $updateWorktimes = {
     # create an array of filterHashTables that filter boot and shutdown events from the desired period
     $startTime = (get-date).addDays(-$historyLength)
-    
+
     $filters = (
         @{
             StartTime = $startTime
@@ -1292,6 +1292,32 @@ $updateWorktimes = {
         }
     )
 
+    # try to get information from archived event data also
+#    if (Test-Path "C:\Windows.old\System32\winevt\Logs\System.evtx" -PathType leaf) {
+#        $filters += @{ StartTime = $startTime
+#                       LogName = "C:\Windows.old\System32\winevt\Logs\System.evtx"
+#                       ProviderName = 'Microsoft-Windows-Kernel-General'
+#                       ID = 12, 13
+#                    }
+#        $filters += @{ StartTime = $startTime
+#                       LogName = "C:\Windows.old\System32\winevt\Logs\System.evtx"
+#                       ProviderName = 'Microsoft-Windows-Kernel-Power'
+#                       ID = 42
+#                    }
+#        $filters += @{ StartTime = $startTime
+#                       LogName = "C:\Windows.old\System32\winevt\Logs\System.evtx"
+#                       ProviderName = 'Microsoft-Windows-Power-Troubleshooter'
+#                       ID = 1
+#                    }
+#    }
+#    if (Test-Path "C:\Windows.old\System32\winevt\Logs\Microsoft-Windows-Winlogon%4Operational.evtx" -PathType leaf) {
+#        $filters += @{ StartTime = $startTime
+#                       LogName = "C:\Windows.old\System32\winevt\Logs\Microsoft-Windows-Winlogon%4Operational.evtx"
+#                       ProviderName = 'Microsoft-Windows-Winlogon'
+#                       ID = 811
+#                    }
+#    }
+
     # get system log entries for boot/shutdown
     # sort (reverse chronological order) and convert to ArrayList
     if ($showLogoff -eq 1) {
@@ -1302,7 +1328,7 @@ $updateWorktimes = {
 
     # create an empty list, which will hold one entry per day
     $log = New-Object Collections.ArrayList
-    
+
     # fill the $log list by searching for start/stop pairs
     :outer while ($events.count -ge 2) {
         if ($log) {
@@ -1341,8 +1367,9 @@ $updateWorktimes = {
             $log.insert(0, $interval)
         }
     }
-    
-    return $log
+
+    # , prevents array unrolling!
+    return ,$log
 }
 
 
@@ -1479,7 +1506,7 @@ if ($mode -eq 'check') {
     Exit $LASTEXITCODE
 }
 elseif ($mode -eq 'widget') {
-    $entry = $log[-1]   
+    $entry = $log[-1]
     $attrs = getLogAttrs($entry)
 
     Add-Type -Name Window -Namespace Console -MemberDefinition '
@@ -1492,8 +1519,6 @@ elseif ($mode -eq 'widget') {
     $hWindow = [Console.Window]::GetConsoleWindow()
     [Console.Window]::ShowWindow($hWindow, 0) | Out-Null
 
-    Write-Host $entry
-    
     $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
 
     Show-Widget $entry[0][0].TimeOfDay.TotalHours $workinghours $maxWorkingHours $breakfastBreak $lunchBreak $breakDeduction1 $breakDeduction2 $unplannedBreaks
