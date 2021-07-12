@@ -143,6 +143,11 @@ $cultureInfo = 'de-DE'
 $breakDeduction1 = 3.0
 # after how many hours should the lunchBreak be deducted
 $breakDeduction2 = 6.0
+# default widget window state
+$topMost = $true
+# default widget window position (-1 for top and left means CenterScreen)
+$topPosition = -1
+$leftPosition = -1
 
 
 # helper functions to calculate the required attributes
@@ -280,7 +285,7 @@ function Show-Widget {
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    Title="goodTimes" Height="110" Width="110" WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" AllowsTransparency="True" Background="Transparent" Opacity="1" Topmost="True">
+    Title="goodTimes" Height="110" Width="110" WindowStartupLocation="CenterScreen" Top="0" Left="0" WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" AllowsTransparency="True" Background="Transparent" Opacity="1" Topmost="True">
     <Canvas x:Name="Canvas" ToolTipService.InitialShowDelay="1000" ToolTipService.ShowDuration="10000" ToolTipService.Placement="Bottom" ToolTipService.HasDropShadow="False" ToolTipService.IsEnabled="True">
         <Path x:Name="Path_NormalWorktime" Stroke="Black" StrokeThickness="1" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="1" SnapsToDevicePixels="True">
             <Path.Data>
@@ -407,6 +412,14 @@ function Show-Widget {
                 </RadialGradientBrush>
             </Path.Fill>
         </Path>
+        <Ellipse x:Name="Path_ActualWorktime12h" Stroke="Black" StrokeThickness="1" SnapsToDevicePixels="True" Canvas.Left="8" Canvas.Top="8" Height="84" Width="84" Opacity="0.2">
+            <Ellipse.Fill>
+                <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
+                    <GradientStop Color="#0080FF" Offset="0.0" />
+                    <GradientStop Color="#0040FF" Offset="1.0" />
+                </RadialGradientBrush>
+            </Ellipse.Fill>
+        </Ellipse>
         <Ellipse Stroke="Black" StrokeThickness="1" SnapsToDevicePixels="True" Height="101" Width="101" />
         <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="4" />
         <Line Stroke="Black" StrokeThickness="2" SnapsToDevicePixels="True" X1="50" Y1="0" X2="50" Y2="3">
@@ -612,7 +625,7 @@ function Show-Widget {
             $LineSegmentB_Break1.Point = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
         }
         else {
-            $Path_Break1.Visibility = [System.Windows.Visibility]::Hidden;
+            $Path_Break1.Visibility = [System.Windows.Visibility]::Hidden
         }
 
         #break2
@@ -631,13 +644,19 @@ function Show-Widget {
             $LineSegmentB_Break2.Point = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
         }
         else {
-            $Path_Break2.Visibility = [System.Windows.Visibility]::Hidden;
+            $Path_Break2.Visibility = [System.Windows.Visibility]::Hidden
         }
 
         #actual worktime
         $start = $startTime
         $rotationAngle = $start * 30
         $end = (Get-Date).TimeOfDay.TotalHours - $startTime - $unplannedBreaks
+        if ($end -ge 12.0) {
+            $end = $end % 12.0
+        }
+        else {
+            $Path_ActualWorktime12h.Visibility = [System.Windows.Visibility]::Hidden
+        }
         $wedgeAngle = $end * 30
 
         $innerArcStartPointX, $innerArcStartPointY, $innerArcEndPointX, $innerArcEndPointY, $outerArcStartPointX, $outerArcStartPointY, $outerArcEndPointX, $outerArcEndPointY = &$GetPieCoordinates 50 50 $rotationAngle $wedgeAngle 42 0
@@ -668,12 +687,15 @@ function Show-Widget {
         }
 
         if ($Widget.Topmost -eq $true) {
-            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Visible;
-            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Hidden;
+            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Visible
+            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Hidden
+            # force topmost again if lost
+            $Widget.Topmost = $false
+            $Widget.Topmost = $true
         }
         else {
-            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Hidden;
-            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Visible;
+            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Hidden
+            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Visible
         }
 
         $Widget.UpdateLayout()
@@ -712,16 +734,16 @@ function Show-Widget {
         if ($Widget.Topmost -eq $true) {
             $Widget.Topmost = $false
 
-            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Hidden;
-            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Visible;
+            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Hidden
+            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Visible
 
             $Widget.UpdateLayout()
         }
         else {
             $Widget.Topmost = $true
 
-            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Visible;
-            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Hidden;
+            $Minimize_Icon.Visibility = [System.Windows.Visibility]::Visible
+            $Maximize_Icon.Visibility = [System.Windows.Visibility]::Hidden
 
             $Widget.UpdateLayout()
         }
@@ -757,7 +779,14 @@ function Show-Widget {
         $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
     }
     else {
-        $Tooltip_OptionalUnplannedBreaks.Visibility = [System.Windows.Visibility]::Collapsed;
+        $Tooltip_OptionalUnplannedBreaks.Visibility = [System.Windows.Visibility]::Collapsed
+    }
+    $Widget.Topmost = $topMost
+    if ($topPosition -ne -1 -and $leftPosition -ne -1) {
+        # 0 = Manual
+        $Widget.WindowStartupLocation = 0
+        $Widget.Top = $topPosition
+        $Widget.Left = $leftPosition
     }
 
     &$UpdateWidget
@@ -1292,7 +1321,7 @@ $updateWorktimes = {
         }
     )
 
-    # try to get information from archived event data also
+    # try to get data from archived events also
 #    if (Test-Path "C:\Windows.old\System32\winevt\Logs\System.evtx" -PathType leaf) {
 #        $filters += @{ StartTime = $startTime
 #                       LogName = "C:\Windows.old\System32\winevt\Logs\System.evtx"
@@ -1508,6 +1537,7 @@ if ($mode -eq 'check') {
 elseif ($mode -eq 'widget') {
     $entry = $log[-1]
     $attrs = getLogAttrs($entry)
+    $unplannedBreaks = 0
 
     Add-Type -Name Window -Namespace Console -MemberDefinition '
     [DllImport("Kernel32.dll")]
@@ -1519,7 +1549,9 @@ elseif ($mode -eq 'widget') {
     $hWindow = [Console.Window]::GetConsoleWindow()
     [Console.Window]::ShowWindow($hWindow, 0) | Out-Null
 
-    $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
+    if ($joinIntervals -eq 0) {
+        $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
+    }
 
     Show-Widget $entry[0][0].TimeOfDay.TotalHours $workinghours $maxWorkingHours $breakfastBreak $lunchBreak $breakDeduction1 $breakDeduction2 $unplannedBreaks
 
