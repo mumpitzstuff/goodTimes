@@ -278,7 +278,7 @@ function Show-Widget {
     )
 
     Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
-
+    
 [xml]$xaml = @"
 <Window
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -512,7 +512,7 @@ function Show-Widget {
                     </StackPanel>
                     <StackPanel x:Name="Tooltip_OptionalUnplannedBreaks" Orientation="Horizontal">
                         <TextBlock Foreground="White" Width="100">Unplanned breaks:</TextBlock>
-                        <TextBlock x:Name="Tooltip_UnplannedBreaks" Foreground="WHite" Width="35" TextAlignment="Right">00:00</TextBlock>
+                        <TextBlock x:Name="Tooltip_UnplannedBreaks" Foreground="White" Width="35" TextAlignment="Right">00:00</TextBlock>
                     </StackPanel>
                 </StackPanel>
             </ToolTip>
@@ -685,6 +685,9 @@ function Show-Widget {
         else {
             $Tooltip_TimeToWork.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes (($normalWorkHours * 60) - ($worktimeAdj * 60))).Negate()).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
         }
+        if ($joinIntervals -eq 0) {
+            $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        }
 
         if ($Widget.Topmost -eq $true) {
             $Minimize_Icon.Visibility = [System.Windows.Visibility]::Visible
@@ -703,14 +706,15 @@ function Show-Widget {
 
     $SyncWidget =
     {
+        Param([Parameter(Mandatory=$true)][ref]$refUnplannedBreaks)
+        
         $log = &$script:updateWorktimes
         $entry = $log[-1]
         $attrs = getLogAttrs($entry)
 
         $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
-
-        # takeover the update
-        $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        
+        $refUnplannedBreaks.Value = $unplannedBreaks
     }
 
     #Read the form
@@ -759,10 +763,10 @@ function Show-Widget {
     #    }
     #})
 
-    $Widget.Add_MouseDoubleClick({
-        #$_.Button -eq [System.Windows.Forms.MouseButtons]::Left
-        #$Widget.Close()
-    })
+    #$Widget.Add_MouseDoubleClick({
+    #    $_.Button -eq [System.Windows.Forms.MouseButtons]::Left
+    #    $Widget.Close()
+    #})
 
     $updateTimer = [System.Windows.Threading.DispatcherTimer]::new()
     $updateTimer.Interval = New-TimeSpan -Minutes 1
@@ -773,7 +777,7 @@ function Show-Widget {
     if ($joinIntervals -eq 0) {
         $syncTimer = [System.Windows.Threading.DispatcherTimer]::new()
         $syncTimer.Interval = New-TimeSpan -Minutes 15
-        $syncTimer.Add_Tick($SyncWidget)
+        $syncTimer.Add_Tick({Invoke-Command -ScriptBlock $SyncWidget -ArgumentList ([ref]$unplannedBreaks)})
         $syncTimer.Start()
 
         $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
@@ -1554,7 +1558,7 @@ elseif ($mode -eq 'widget') {
     }
 
     Show-Widget $entry[0][0].TimeOfDay.TotalHours $workinghours $maxWorkingHours $breakfastBreak $lunchBreak $breakDeduction1 $breakDeduction2 $unplannedBreaks
-
+    
     #[Console.Window]::ShowWindow($hWindow, 4) | Out-Null
 
     Exit $LASTEXITCODE
