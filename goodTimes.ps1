@@ -278,7 +278,7 @@ function Show-Widget {
     )
 
     Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
-    
+
 [xml]$xaml = @"
 <Window
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -707,13 +707,13 @@ function Show-Widget {
     $SyncWidget =
     {
         Param([Parameter(Mandatory=$true)][ref]$refUnplannedBreaks)
-        
+
         $log = &$script:updateWorktimes
         $entry = $log[-1]
         $attrs = getLogAttrs($entry)
 
         $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
-        
+
         $refUnplannedBreaks.Value = $unplannedBreaks
     }
 
@@ -1325,31 +1325,43 @@ $updateWorktimes = {
         }
     )
 
-    # try to get data from archived events also
-#    if (Test-Path "C:\Windows.old\System32\winevt\Logs\System.evtx" -PathType leaf) {
-#        $filters += @{ StartTime = $startTime
-#                       LogName = "C:\Windows.old\System32\winevt\Logs\System.evtx"
-#                       ProviderName = 'Microsoft-Windows-Kernel-General'
-#                       ID = 12, 13
-#                    }
-#        $filters += @{ StartTime = $startTime
-#                       LogName = "C:\Windows.old\System32\winevt\Logs\System.evtx"
-#                       ProviderName = 'Microsoft-Windows-Kernel-Power'
-#                       ID = 42
-#                    }
-#        $filters += @{ StartTime = $startTime
-#                       LogName = "C:\Windows.old\System32\winevt\Logs\System.evtx"
-#                       ProviderName = 'Microsoft-Windows-Power-Troubleshooter'
-#                       ID = 1
-#                    }
-#    }
-#    if (Test-Path "C:\Windows.old\System32\winevt\Logs\Microsoft-Windows-Winlogon%4Operational.evtx" -PathType leaf) {
-#        $filters += @{ StartTime = $startTime
-#                       LogName = "C:\Windows.old\System32\winevt\Logs\Microsoft-Windows-Winlogon%4Operational.evtx"
-#                       ProviderName = 'Microsoft-Windows-Winlogon'
-#                       ID = 811
-#                    }
-#    }
+    # try to get data from archived events also, which should be available up to 10 days (administrator rights needed?!?)
+    if (Test-Path "C:\Windows.old\WINDOWS\System32\winevt\Logs\System.evtx" -PathType leaf) {
+        Write-Host "ATTENTION: Windows upgrade detected and data may be lost in a few days!"
+
+        if ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544')
+        {
+            $filters += @{ StartTime = $startTime
+                           Path = 'C:\Windows.old\WINDOWS\System32\winevt\Logs\System.evtx'
+                           ProviderName = 'Microsoft-Windows-Kernel-General'
+                           ID = 12, 13
+                        }
+            $filters += @{ StartTime = $startTime
+                           Path = 'C:\Windows.old\WINDOWS\System32\winevt\Logs\System.evtx'
+                           ProviderName = 'Microsoft-Windows-Kernel-Power'
+                           ID = 42
+                        }
+            $filters += @{ StartTime = $startTime
+                           Path = 'C:\Windows.old\WINDOWS\System32\winevt\Logs\System.evtx'
+                           ProviderName = 'Microsoft-Windows-Power-Troubleshooter'
+                           ID = 1
+                        }
+        }
+        else
+        {
+            Write-Host "Administrator rights needed to get data from Windows.old directory (available up to 10 days after upgrading windows)!"
+        }
+    }
+    if (Test-Path "C:\Windows.old\WINDOWS\System32\winevt\Logs\Microsoft-Windows-Winlogon%4Operational.evtx" -PathType leaf) {
+        if ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544')
+        {
+            $filters += @{ StartTime = $startTime
+                           Path = "C:\Windows.old\WINDOWS\System32\winevt\Logs\Microsoft-Windows-Winlogon%4Operational.evtx"
+                           ProviderName = 'Microsoft-Windows-Winlogon'
+                           ID = 811
+                        }
+        }
+    }
 
     # get system log entries for boot/shutdown
     # sort (reverse chronological order) and convert to ArrayList
@@ -1558,7 +1570,7 @@ elseif ($mode -eq 'widget') {
     }
 
     Show-Widget $entry[0][0].TimeOfDay.TotalHours $workinghours $maxWorkingHours $breakfastBreak $lunchBreak $breakDeduction1 $breakDeduction2 $unplannedBreaks
-    
+
     #[Console.Window]::ShowWindow($hWindow, 4) | Out-Null
 
     Exit $LASTEXITCODE
