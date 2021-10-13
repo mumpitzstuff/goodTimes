@@ -763,10 +763,12 @@ function Show-Widget {
     #    }
     #})
 
-    #$Widget.Add_MouseDoubleClick({
+    $Widget.Add_MouseDoubleClick({
     #    $_.Button -eq [System.Windows.Forms.MouseButtons]::Left
     #    $Widget.Close()
-    #})
+        $ScriptName = $MyInvocation.ScriptName
+        Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l 60 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j $joinIntervals -m $maxWorkingHours -i $showLogoff"
+    })
 
     $updateTimer = [System.Windows.Threading.DispatcherTimer]::new()
     $updateTimer.Interval = New-TimeSpan -Minutes 1
@@ -1329,8 +1331,7 @@ $updateWorktimes = {
     if (Test-Path "C:\Windows.old\WINDOWS\System32\winevt\Logs\System.evtx" -PathType leaf) {
         Write-Host "ATTENTION: Windows upgrade detected and data may be lost in a few days!"
 
-        if ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544')
-        {
+        if ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544') {
             $filters += @{ StartTime = $startTime
                            Path = 'C:\Windows.old\WINDOWS\System32\winevt\Logs\System.evtx'
                            ProviderName = 'Microsoft-Windows-Kernel-General'
@@ -1346,15 +1347,12 @@ $updateWorktimes = {
                            ProviderName = 'Microsoft-Windows-Power-Troubleshooter'
                            ID = 1
                         }
-        }
-        else
-        {
+        } else {
             Write-Host "Administrator rights needed to get data from Windows.old directory (available up to 10 days after upgrading windows)!"
         }
     }
     if (Test-Path "C:\Windows.old\WINDOWS\System32\winevt\Logs\Microsoft-Windows-Winlogon%4Operational.evtx" -PathType leaf) {
-        if ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544')
-        {
+        if ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544') {
             $filters += @{ StartTime = $startTime
                            Path = "C:\Windows.old\WINDOWS\System32\winevt\Logs\Microsoft-Windows-Winlogon%4Operational.evtx"
                            ProviderName = 'Microsoft-Windows-Winlogon'
@@ -1449,34 +1447,42 @@ elseif ($mode -eq 'uninstall') {
     Exit $LASTEXITCODE
 }
 elseif ($mode -eq 'install_widget') {
-    "Widget installation started..."
+    if ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544') {
+        "Widget installation started..."
 
-    $vbscript = 'schedule.vbs'
-    $vbscriptPath = split-path -parent $MyInvocation.MyCommand.Definition
-    $action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "widget -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
-    $trigger = New-ScheduledTaskTrigger -AtLogon
-    $settings = New-ScheduledTaskSettingsSet -Hidden -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
-    $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings
+        $vbscript = 'schedule.vbs'
+        $vbscriptPath = split-path -parent $MyInvocation.MyCommand.Definition
+        $action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "widget -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
+        $trigger = New-ScheduledTaskTrigger -AtLogon
+        $settings = New-ScheduledTaskSettingsSet -Hidden -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
+        $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings
 
-    if (Get-ScheduledTask 'Start-WorktimeWidget' -ErrorAction SilentlyContinue) {
-        Unregister-ScheduledTask 'Start-WorktimeWidget'
+        if (Get-ScheduledTask 'Start-WorktimeWidget' -ErrorAction SilentlyContinue) {
+            Unregister-ScheduledTask 'Start-WorktimeWidget'
+        }
+        Register-ScheduledTask 'Start-WorktimeWidget' -InputObject $task | Out-Null
+
+        "Ready."
+
+        Exit $LASTEXITCODE
+    } else {
+        Write-Host "Administrator rights needed to install the automatic widget startup at windows logon! (scheduler task with trigger AtLogon)"
     }
-    Register-ScheduledTask 'Start-WorktimeWidget' -InputObject $task | Out-Null
-
-    "Ready."
-
-    Exit $LASTEXITCODE
 }
 elseif ($mode -eq 'uninstall_widget') {
-    "Widget deinstallation started ..."
+    if ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544') {
+        "Widget deinstallation started ..."
 
-    if (Get-ScheduledTask 'Start-WorktimeWidget' -ErrorAction SilentlyContinue) {
-        Unregister-ScheduledTask 'Start-WorktimeWidget'
+        if (Get-ScheduledTask 'Start-WorktimeWidget' -ErrorAction SilentlyContinue) {
+            Unregister-ScheduledTask 'Start-WorktimeWidget'
+        }
+
+        "Ready."
+
+        Exit $LASTEXITCODE
+    } else {
+        Write-Host "Administrator rights needed to uninstall the automatic widget startup at windows logon!"
     }
-
-    "Ready."
-
-    Exit $LASTEXITCODE
 }
 
 
