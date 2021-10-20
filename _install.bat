@@ -36,7 +36,7 @@ goto END
 :Install1
 cls
 echo.
-_runJoined.bat install
+%~dp0_runJoined.bat install
 echo.
 pause
 goto menu
@@ -44,7 +44,7 @@ goto menu
 :Install2
 cls
 echo.
-_showWidgetJoined.bat install_widget
+%~dp0_showWidgetJoined.bat install_widget
 echo.
 pause
 goto menu
@@ -52,7 +52,7 @@ goto menu
 :Install3
 cls
 echo.
-_runBreaks.bat install
+%~dp0_runBreaks.bat install
 echo.
 pause
 goto menu
@@ -60,7 +60,7 @@ goto menu
 :Install4
 cls
 echo.
-_showWidgetBreaks.bat install_widget
+%~dp0_showWidgetBreaks.bat install_widget
 echo.
 pause
 goto menu
@@ -68,7 +68,7 @@ goto menu
 :Uninstall1
 cls
 echo.
-powershell -EP Bypass -file .\goodTimes.ps1 uninstall
+powershell -EP Bypass -file %~dp0goodTimes.ps1 uninstall
 echo.
 pause
 goto menu
@@ -76,7 +76,7 @@ goto menu
 :Uninstall2
 cls
 echo.
-powershell -EP Bypass -file .\goodTimes.ps1 uninstall_widget
+powershell -EP Bypass -file %~dp0goodTimes.ps1 uninstall_widget
 echo.
 pause
 goto menu
