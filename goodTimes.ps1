@@ -1352,6 +1352,23 @@ $updateWorktimes = {
         } else {
             Write-Host "Administrator rights needed to get data from Windows.old directory (available up to 10 days after upgrading windows)!"
         }
+
+        $ErrorMsgParams = @{
+            Title = 'ATTENTION'
+            TitleFontSize = 20
+            TitleBackground = 'Red'
+            TitleTextForeground = 'WhiteSmoke'
+            TitleFontWeight = 'UltraBold'
+            Sound = 'Windows Exclamation'
+            Timeout = 300
+        }
+        Try {
+            New-WPFMessageBox @ErrorMsgParams -Content "Windows upgrade detected and data may be lost in a few days!&#10;&#10;Administrator rights needed to get data from Windows.old directory (available up to 10 days after upgrading windows)!"
+        }
+        Catch {
+            $Shell = new-object -comobject wscript.shell -ErrorAction Stop
+            $Shell.popup("Windows upgrade detected and data may be lost in a few days!`n`nAdministrator rights needed to get data from Windows.old directory (available up to 10 days after upgrading windows)!", 0, 'ATTENTION', 48 + 4096) | Out-Null
+        }
     }
     if (Test-Path "C:\Windows.old\WINDOWS\System32\winevt\Logs\Microsoft-Windows-Winlogon%4Operational.evtx" -PathType leaf) {
         if ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544') {
