@@ -143,6 +143,8 @@ $cultureInfo = 'de-DE'
 $breakDeduction1 = 3.0
 # after how many hours should the lunchBreak be deducted
 $breakDeduction2 = 6.0
+# break threshold in minutes (smaller breaks will be ignored e.g. PC reboots)
+$breakThreshold = 3.0
 # default widget window state
 $topMost = $true
 # default widget window position (-1 for top and left means CenterScreen)
@@ -1404,7 +1406,12 @@ $updateWorktimes = {
         $interval = ,($start.TimeCreated, $end.TimeCreated)
         if ($last -and $start.TimeCreated.Date.equals($last[0][0].Date)) {
             # combine uptimes
-            $log[0] = $interval + $last
+            $diff = $last[0][0] - $end.TimeCreated
+            if ($diff.TotalMinutes -ge $breakThreshold) {
+              $log[0] = $interval + $last
+            } else {
+              $log[0][0][0] = $start.TimeCreated
+            }
         } else {
             # create new day
             $log.insert(0, $interval)
