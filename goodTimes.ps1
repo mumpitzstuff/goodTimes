@@ -1331,8 +1331,6 @@ $updateWorktimes = {
 
     # try to get data from archived events also, which should be available up to 10 days (administrator rights needed?!?)
     if (Test-Path "C:\Windows.old\WINDOWS\System32\winevt\Logs\System.evtx" -PathType leaf) {
-        Write-Host "ATTENTION: Windows upgrade detected and data may be lost in a few days!"
-
         if ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544') {
             $filters += @{ StartTime = $startTime
                            Path = 'C:\Windows.old\WINDOWS\System32\winevt\Logs\System.evtx'
@@ -1349,25 +1347,6 @@ $updateWorktimes = {
                            ProviderName = 'Microsoft-Windows-Power-Troubleshooter'
                            ID = 1
                         }
-        } else {
-            Write-Host "Administrator rights needed to get data from Windows.old directory (available up to 10 days after upgrading windows)!"
-        }
-
-        $ErrorMsgParams = @{
-            Title = 'ATTENTION'
-            TitleFontSize = 20
-            TitleBackground = 'Red'
-            TitleTextForeground = 'WhiteSmoke'
-            TitleFontWeight = 'UltraBold'
-            Sound = 'Windows Exclamation'
-            Timeout = 300
-        }
-        Try {
-            New-WPFMessageBox @ErrorMsgParams -Content "Windows upgrade detected and data may be lost in a few days!&#10;&#10;Administrator rights needed to get data from Windows.old directory (available up to 10 days after upgrading windows)!"
-        }
-        Catch {
-            $Shell = new-object -comobject wscript.shell -ErrorAction Stop
-            $Shell.popup("Windows upgrade detected and data may be lost in a few days!`n`nAdministrator rights needed to get data from Windows.old directory (available up to 10 days after upgrading windows)!", 0, 'ATTENTION', 48 + 4096) | Out-Null
         }
     }
     if (Test-Path "C:\Windows.old\WINDOWS\System32\winevt\Logs\Microsoft-Windows-Winlogon%4Operational.evtx" -PathType leaf) {
@@ -1512,10 +1491,38 @@ elseif ($mode -eq 'uninstall_widget') {
 
 $log = &$updateWorktimes
 
+$entry = $log[-1]
+$attrs = getLogAttrs($entry)
+
+# show dialog only within the first 5 minutes after startup
+if (($attrs.uptime.TotalMinutes -lt 5.0) -and (Test-Path "C:\Windows.old\WINDOWS\System32\winevt\Logs\System.evtx" -PathType leaf)) {
+    Write-Host "ATTENTION: Windows upgrade detected and data may be lost in a few days!"
+
+    if (-not ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544')) {
+        Write-Host "Administrator rights needed to get data from Windows.old directory (available up to 10 days after upgrading windows)!"
+    }
+
+    $ErrorMsgParams = @{
+        Title = 'ATTENTION'
+        TitleFontSize = 20
+        TitleBackground = 'Red'
+        TitleTextForeground = 'WhiteSmoke'
+        TitleFontWeight = 'UltraBold'
+        Sound = 'Windows Exclamation'
+        Timeout = 300
+    }
+    Try {
+        New-WPFMessageBox @ErrorMsgParams -Content "Windows upgrade detected and data may be lost in a few days!&#10;&#10;Administrator rights needed to get data from Windows.old directory (available up to 10 days after upgrading windows) $attrs.uptime.TotalMinutes!"
+    }
+    Catch {
+        $Shell = new-object -comobject wscript.shell -ErrorAction Stop
+        $Shell.popup("Windows upgrade detected and data may be lost in a few days!`n`nAdministrator rights needed to get data from Windows.old directory (available up to 10 days after upgrading windows)!", 0, 'ATTENTION', 48 + 4096) | Out-Null
+    }
+}
+
 if ($mode -eq 'check') {
-    $entry = $log[-1]
-    $attrs = getLogAttrs($entry)
     $minutes = [Math]::Round($maxWorkingHours * 60) - [Math]::Round($attrs.uptime.TotalMinutes)
+
     if ($attrs.uptime.TotalHours -ge $breakDeduction1) {
         $minutes += [Math]::Round($breakfastBreak * 60)
     }
@@ -1581,8 +1588,6 @@ if ($mode -eq 'check') {
     Exit $LASTEXITCODE
 }
 elseif ($mode -eq 'widget') {
-    $entry = $log[-1]
-    $attrs = getLogAttrs($entry)
     $unplannedBreaks = 0
 
     Add-Type -Name Window -Namespace Console -MemberDefinition '
