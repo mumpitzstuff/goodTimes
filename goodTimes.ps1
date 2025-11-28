@@ -137,19 +137,54 @@ param (
         $showLogoff = 1
 )
 
-# global configuration variables (e.g. en-GB or en-US would be possible)
-$cultureInfo = 'de-DE'
-# after how many hours should the breakfastBreak be deducted
-$breakDeduction1 = 3.0
-# after how many hours should the lunchBreak be deducted
-$breakDeduction2 = 6.0
-# break threshold in minutes (smaller breaks will be ignored e.g. PC reboots)
-$breakThreshold = 3.0
-# default widget window state
-$topMost = $true
-# default widget window position (-1 for top and left means CenterScreen)
-$topPosition = -1
-$leftPosition = -1
+# global configuration variables (can be overridden by goodTimes.json next to the script)
+$scriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$configFile  = Join-Path $scriptDir 'goodTimes.json'
+
+$defaultConfig = @{
+    cultureInfo     = 'de-DE'
+    breakDeduction1 = 3.0
+    breakDeduction2 = 6.0
+    breakThreshold  = 3.0
+    topMost         = $true
+    topPosition     = -1
+    leftPosition    = -1
+}
+
+function Remove-HashCommentLines {
+    param([string]$json)
+    # split into lines, drop lines that start with optional whitespace then #
+    $lines = $json -split "`r?`n"
+    ($lines | Where-Object { $_ -notmatch '^\s*#' }) -join "`n"
+}
+
+if (Test-Path $configFile) {
+    try {
+        $raw = Get-Content -Raw -Path $configFile -ErrorAction Stop
+        $clean = Remove-HashCommentLines $raw
+        $cfg = $clean | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        $cfg = $null
+    }
+} else {
+    $cfg = $null
+}
+
+function Get-ConfigValue {
+    param($Name, $Default)
+    if ($null -ne $cfg -and $cfg.PSObject.Properties.Name -contains $Name) {
+        return $cfg.$Name
+    }
+    return $Default
+}
+
+$cultureInfo     = Get-ConfigValue 'cultureInfo'              $defaultConfig.cultureInfo
+$breakDeduction1 = [double](Get-ConfigValue 'breakDeduction1' $defaultConfig.breakDeduction1)
+$breakDeduction2 = [double](Get-ConfigValue 'breakDeduction2' $defaultConfig.breakDeduction2)
+$breakThreshold  = [double](Get-ConfigValue 'breakThreshold'  $defaultConfig.breakThreshold)
+$topMost         = [bool]  (Get-ConfigValue 'topMost'         $defaultConfig.topMost)
+$topPosition     = [int]   (Get-ConfigValue 'topPosition'     $defaultConfig.topPosition)
+$leftPosition    = [int]   (Get-ConfigValue 'leftPosition'    $defaultConfig.leftPosition)
 
 
 # helper functions to calculate the required attributes
@@ -688,7 +723,11 @@ function Show-Widget {
             $Tooltip_TimeToWork.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes (($normalWorkHours * 60) - ($worktimeAdj * 60))).Negate()).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
         }
         if ($joinIntervals -eq 0) {
-            $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+            if ($null -eq $unplannedBreaks -or [double]::IsNaN([double]$unplannedBreaks)) {
+                $Tooltip_UnplannedBreaks.Text = '00:00'
+            } else {
+                $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+            }
         }
 
         if ($Widget.Topmost -eq $true) {
@@ -784,7 +823,11 @@ function Show-Widget {
         $syncTimer.Add_Tick({Invoke-Command -ScriptBlock $SyncWidget -ArgumentList ([ref]$unplannedBreaks)})
         $syncTimer.Start()
 
-        $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        if ($null -eq $unplannedBreaks -or [double]::IsNaN([double]$unplannedBreaks)) {
+            $Tooltip_UnplannedBreaks.Text = '00:00'
+        } else {
+            $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        }
     }
     else {
         $Tooltip_OptionalUnplannedBreaks.Visibility = [System.Windows.Visibility]::Collapsed
