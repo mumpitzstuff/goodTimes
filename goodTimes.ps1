@@ -137,6 +137,9 @@ param (
         $showLogoff = 1
 )
 
+# Load all required assemblies once at the start
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Drawing -ErrorAction SilentlyContinue
+
 # global configuration variables (can be overridden by goodTimes.json next to the script)
 $scriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $configFile  = Join-Path $scriptDir 'goodTimes.json'
@@ -313,8 +316,6 @@ function Show-Widget {
         [Parameter(Mandatory=$true, Position=7)]
         [double] $unplannedBreaks
     )
-
-    Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
 [xml]$xaml = @"
 <Window
@@ -749,7 +750,7 @@ function Show-Widget {
     {
         Param([Parameter(Mandatory=$true)][ref]$refUnplannedBreaks)
 
-        $log = &$script:updateWorktimes
+        $log = &$script:updateWorktimes -eventPeriod 1
         $entry = $log[-1]
         $attrs = getLogAttrs($entry)
 
@@ -923,10 +924,6 @@ function New-WPFMessageBox {
 
     # Dynamically Populated parameters
     DynamicParam {
-
-        # Add assemblies for use in PS Console
-        Add-Type -AssemblyName System.Drawing, PresentationCore
-
         # ContentBackground
         $ContentBackground = 'ContentBackground'
         $AttributeCollection = New-Object System.Collections.ObjectModel.Collection[System.Attribute]
@@ -1072,10 +1069,6 @@ function New-WPFMessageBox {
         $RuntimeParameterDictionary.Add($TopMost, $RuntimeParameter)
 
         return $RuntimeParameterDictionary
-    }
-
-    Begin {
-        Add-Type -AssemblyName PresentationFramework
     }
 
     Process {
@@ -1342,8 +1335,13 @@ function New-WPFMessageBox {
 }
 
 $updateWorktimes = {
+    Param(
+        [Parameter(Mandatory=$false)]
+        [int]$eventPeriod = $historyLength
+    )
+    
     # create an array of filterHashTables that filter boot and shutdown events from the desired period
-    $startTime = (get-date).addDays(-$historyLength)
+    $startTime = (get-date).addDays(-$eventPeriod)
 
     $filters = (
         @{
@@ -1531,8 +1529,11 @@ elseif ($mode -eq 'uninstall_widget') {
     }
 }
 
-
-$log = &$updateWorktimes
+if ($mode -in ('check', 'widget')) {
+    $log = &$updateWorktimes -eventPeriod 1
+} else {
+    $log = &$updateWorktimes
+}
 
 $entry = $log[-1]
 $attrs = getLogAttrs($entry)
@@ -1633,15 +1634,15 @@ if ($mode -eq 'check') {
 elseif ($mode -eq 'widget') {
     $unplannedBreaks = 0
 
-    Add-Type -Name Window -Namespace Console -MemberDefinition '
-    [DllImport("Kernel32.dll")]
-    public static extern IntPtr GetConsoleWindow();
-    [DllImport("User32.dll")]
-    public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
-    '
+    #Add-Type -Name Window -Namespace Console -MemberDefinition '
+    #[DllImport("Kernel32.dll")]
+    #public static extern IntPtr GetConsoleWindow();
+    #[DllImport("User32.dll")]
+    #public static extern bool ShowWindow(IntPtr hWnd, Int32 nCmdShow);
+    #'
 
-    $hWindow = [Console.Window]::GetConsoleWindow()
-    [Console.Window]::ShowWindow($hWindow, 0) | Out-Null
+    #$hWindow = [Console.Window]::GetConsoleWindow()
+    #[Console.Window]::ShowWindow($hWindow, 0) | Out-Null
 
     if ($joinIntervals -eq 0) {
         $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
