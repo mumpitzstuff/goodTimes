@@ -1463,9 +1463,11 @@ $updateWorktimes = {
 if ($mode -eq 'install') {
     "Installation started..."
 
-    $vbscript = 'schedule.vbs'
-    $vbscriptPath = split-path -parent $MyInvocation.MyCommand.Definition
-    $action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "check -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
+    #$vbscript = 'schedule.vbs'
+    #$vbscriptPath = split-path -parent $MyInvocation.MyCommand.Definition
+    #$action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "check -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
+    $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
+    $action = New-ScheduledTaskAction -Execute conhost.exe -WorkingDirectory $scriptPath -Argument "--headless powershell.exe -File goodTimes.ps1 check -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
     $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddSeconds(10)) -RepetitionInterval (New-TimeSpan -Minutes 5)
     $settings = New-ScheduledTaskSettingsSet -Hidden -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
     $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings
@@ -1494,9 +1496,11 @@ elseif ($mode -eq 'install_widget') {
     if ([Security.Principal.WindowsIdentity]::GetCurrent().Groups -contains 'S-1-5-32-544') {
         "Widget installation started..."
 
-        $vbscript = 'schedule.vbs'
-        $vbscriptPath = split-path -parent $MyInvocation.MyCommand.Definition
-        $action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "widget -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
+        #$vbscript = 'schedule.vbs'
+        #$vbscriptPath = split-path -parent $MyInvocation.MyCommand.Definition
+        #$action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "widget -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
+        $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
+        $action = New-ScheduledTaskAction -Execute conhost.exe -WorkingDirectory $scriptPath -Argument "--headless powershell.exe -File goodTimes.ps1 widget -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
         $trigger = New-ScheduledTaskTrigger -AtLogon
         $settings = New-ScheduledTaskSettingsSet -Hidden -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
         $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings
