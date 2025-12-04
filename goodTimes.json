@@ -12,5 +12,10 @@
   # default widget window position (-1 for top and left means CenterScreen)
   # both values must be set to different values than -1 if you want to change it 
   "topPosition": -1,
-  "leftPosition": -1
+  "leftPosition": -1,
+  # force double click behavior for widget
+  # none   = use the same behavior as the widget
+  # joined = use the joined mode where breaks are part of the worktime
+  # breaks = use the breaks mode where breaks are tracked separately
+  "forceWidgetDoubleClickBehavior": "breaks"
 }

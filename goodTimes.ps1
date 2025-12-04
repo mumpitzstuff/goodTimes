@@ -145,13 +145,14 @@ $scriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $configFile  = Join-Path $scriptDir 'goodTimes.json'
 
 $defaultConfig = @{
-    cultureInfo     = 'de-DE'
-    breakDeduction1 = 3.0
-    breakDeduction2 = 6.0
-    breakThreshold  = 3.0
-    topMost         = $true
-    topPosition     = -1
-    leftPosition    = -1
+    cultureInfo                    = 'de-DE'
+    breakDeduction1                = 3.0
+    breakDeduction2                = 6.0
+    breakThreshold                 = 3.0
+    topMost                        = $true
+    topPosition                    = -1
+    leftPosition                   = -1
+    forceWidgetDoubleClickBehavior = 'none'
 }
 
 function Remove-HashCommentLines {
@@ -181,13 +182,14 @@ function Get-ConfigValue {
     return $Default
 }
 
-$cultureInfo     = Get-ConfigValue 'cultureInfo'              $defaultConfig.cultureInfo
-$breakDeduction1 = [double](Get-ConfigValue 'breakDeduction1' $defaultConfig.breakDeduction1)
-$breakDeduction2 = [double](Get-ConfigValue 'breakDeduction2' $defaultConfig.breakDeduction2)
-$breakThreshold  = [double](Get-ConfigValue 'breakThreshold'  $defaultConfig.breakThreshold)
-$topMost         = [bool]  (Get-ConfigValue 'topMost'         $defaultConfig.topMost)
-$topPosition     = [int]   (Get-ConfigValue 'topPosition'     $defaultConfig.topPosition)
-$leftPosition    = [int]   (Get-ConfigValue 'leftPosition'    $defaultConfig.leftPosition)
+$cultureInfo                    = Get-ConfigValue 'cultureInfo'                    $defaultConfig.cultureInfo
+$breakDeduction1                = [double](Get-ConfigValue 'breakDeduction1'       $defaultConfig.breakDeduction1)
+$breakDeduction2                = [double](Get-ConfigValue 'breakDeduction2'       $defaultConfig.breakDeduction2)
+$breakThreshold                 = [double](Get-ConfigValue 'breakThreshold'        $defaultConfig.breakThreshold)
+$topMost                        = [bool]  (Get-ConfigValue 'topMost'               $defaultConfig.topMost)
+$topPosition                    = [int]   (Get-ConfigValue 'topPosition'           $defaultConfig.topPosition)
+$leftPosition                   = [int]   (Get-ConfigValue 'leftPosition'          $defaultConfig.leftPosition)
+$forceWidgetDoubleClickBehavior = Get-ConfigValue 'forceWidgetDoubleClickBehavior' $defaultConfig.forceWidgetDoubleClickBehavior
 
 
 # helper functions to calculate the required attributes
@@ -809,7 +811,18 @@ function Show-Widget {
     #    $_.Button -eq [System.Windows.Forms.MouseButtons]::Left
     #    $Widget.Close()
         $ScriptName = $MyInvocation.ScriptName
-        Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l 60 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j $joinIntervals -m $maxWorkingHours -i $showLogoff"
+        if ($forceWidgetDoubleClickBehavior -eq 'joined')
+        {
+            Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j 1 -m $maxWorkingHours"
+        }
+        elseif ($forceWidgetDoubleClickBehavior -eq 'breaks')
+        {
+            Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j 0 -m $maxWorkingHours -i 1"
+        }
+        else
+        {
+            Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j $joinIntervals -m $maxWorkingHours -i $showLogoff"
+        }
     })
 
     $updateTimer = [System.Windows.Threading.DispatcherTimer]::new()
@@ -1500,7 +1513,7 @@ elseif ($mode -eq 'install_widget') {
         #$vbscriptPath = split-path -parent $MyInvocation.MyCommand.Definition
         #$action = New-ScheduledTaskAction -Execute $vbscript -WorkingDirectory $vbscriptPath -Argument "widget -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
         $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
-        $action = New-ScheduledTaskAction -Execute conhost.exe -WorkingDirectory $scriptPath -Argument "--headless powershell.exe -File goodTimes.ps1 widget -l 1 -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
+        $action = New-ScheduledTaskAction -Execute conhost.exe -WorkingDirectory $scriptPath -Argument "--headless powershell.exe -File goodTimes.ps1 widget -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -m $maxWorkingHours -j $joinIntervals -i $showLogoff"
         $trigger = New-ScheduledTaskTrigger -AtLogon
         $settings = New-ScheduledTaskSettingsSet -Hidden -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -StartWhenAvailable
         $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings
