@@ -138,7 +138,7 @@ param (
 )
 
 # Load all required assemblies once at the start
-Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Drawing -ErrorAction SilentlyContinue
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms, System.Drawing -ErrorAction SilentlyContinue
 
 # global configuration variables (can be overridden by goodTimes.json next to the script)
 $scriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Definition
@@ -533,28 +533,38 @@ function Show-Widget {
 
         <Canvas.ToolTip>
             <ToolTip Background="Silver">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Foreground="#0080FF" Width="100">Start time:</TextBlock>
-                        <TextBlock x:Name="Tooltip_StartTime" Foreground="#0080FF" Width="35" TextAlignment="Right">00:00</TextBlock>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Foreground="#0080FF" Width="100">Start time:</TextBlock>
+                            <TextBlock x:Name="Tooltip_StartTime" Foreground="#0080FF" Width="35" TextAlignment="Right">00:00</TextBlock>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Foreground="#FFFF00" Width="100">Normal worktime:</TextBlock>
+                            <TextBlock x:Name="Tooltip_NormalWorktime" Foreground="#FFFF00" Width="35" TextAlignment="Right">00:00</TextBlock>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Foreground="#FF4040" Width="100">Max worktime:</TextBlock>
+                            <TextBlock x:Name="Tooltip_MaxWorktime" Foreground="#FF4040" Width="35" TextAlignment="Right">00:00</TextBlock>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Foreground="#0040FF" Width="100">Time to work:</TextBlock>
+                            <TextBlock x:Name="Tooltip_TimeToWork" Foreground="#0040FF" Width="35" TextAlignment="Right">00:00</TextBlock>
+                        </StackPanel>
+                        <StackPanel x:Name="Tooltip_OptionalUnplannedBreaks" Orientation="Horizontal">
+                            <TextBlock Foreground="White" Width="100">Unplanned breaks:</TextBlock>
+                            <TextBlock x:Name="Tooltip_UnplannedBreaks" Foreground="White" Width="35" TextAlignment="Right">00:00</TextBlock>
+                        </StackPanel>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Foreground="#FFFF00" Width="100">Normal worktime:</TextBlock>
-                        <TextBlock x:Name="Tooltip_NormalWorktime" Foreground="#FFFF00" Width="35" TextAlignment="Right">00:00</TextBlock>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Foreground="#FF4040" Width="100">Max worktime:</TextBlock>
-                        <TextBlock x:Name="Tooltip_MaxWorktime" Foreground="#FF4040" Width="35" TextAlignment="Right">00:00</TextBlock>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Foreground="#0040FF" Width="100">Time to work:</TextBlock>
-                        <TextBlock x:Name="Tooltip_TimeToWork" Foreground="#0040FF" Width="35" TextAlignment="Right">00:00</TextBlock>
-                    </StackPanel>
-                    <StackPanel x:Name="Tooltip_OptionalUnplannedBreaks" Orientation="Horizontal">
-                        <TextBlock Foreground="White" Width="100">Unplanned breaks:</TextBlock>
-                        <TextBlock x:Name="Tooltip_UnplannedBreaks" Foreground="White" Width="35" TextAlignment="Right">00:00</TextBlock>
-                    </StackPanel>
-                </StackPanel>
+
+                    <!-- Lower-right helper text -->
+                    <TextBlock Grid.Row="1" Text="DoubleClick widget to open table" Foreground="#333333" FontSize="6" HorizontalAlignment="Right" Margin="0,2,0,0" />
+                </Grid>
             </ToolTip>
         </Canvas.ToolTip>
     </Canvas>
@@ -746,6 +756,9 @@ function Show-Widget {
         }
 
         $Widget.UpdateLayout()
+
+        # update tray icon to reflect current widget visual
+        try { Set-TrayIconFromVisual -Visual $Widget } catch {}
     }
 
     $SyncWidget =
@@ -774,8 +787,166 @@ function Show-Widget {
         $Widget.DragMove()
     })
 
+    # Native method to destroy icon handles
+    Add-Type -Namespace User32 -Name NativeMethods -MemberDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class NativeMethods {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool DestroyIcon(IntPtr hIcon);
+}
+'@
+
+    # helper: set notify icon from the given visual (creates an Icon in memory and assigns it)
+    function Set-TrayIconFromVisual {
+        param(
+            [Parameter(Mandatory=$true)][System.Windows.FrameworkElement]$Visual,
+            [Parameter(Mandatory=$false)][int]$Size = 64
+        )
+        try {
+            $dpiX = 96.0
+            $dpiY = 96.0
+
+            $rt = New-Object System.Windows.Media.Imaging.RenderTargetBitmap($Size, $Size, $dpiX, $dpiY, [System.Windows.Media.PixelFormats]::Pbgra32)
+            $vb = New-Object System.Windows.Media.VisualBrush($Visual)
+            $drawing = New-Object System.Windows.Media.DrawingVisual
+            $ctx = $drawing.RenderOpen()
+            $ctx.DrawRectangle($vb, $null, [System.Windows.Rect]::new(0,0,$Size,$Size))
+            $ctx.Close()
+            $rt.Render($drawing)
+
+            $encoder = New-Object System.Windows.Media.Imaging.PngBitmapEncoder
+            $encoder.Frames.Add([System.Windows.Media.Imaging.BitmapFrame]::Create($rt))
+            $ms = New-Object System.IO.MemoryStream
+            $encoder.Save($ms)
+            $ms.Seek(0,'Begin') | Out-Null
+            $bitmap = [System.Drawing.Bitmap]::FromStream($ms)
+
+            $hicon = $bitmap.GetHicon()
+            $iconFromHandle = [System.Drawing.Icon]::FromHandle($hicon)
+
+            # Clone the icon to create a managed copy that owns its resources,
+            # then destroy the native HICON immediately to avoid leaking native handles.
+            $icon = $iconFromHandle.Clone()
+            try { $iconFromHandle.Dispose() } catch {}
+            try { [User32.NativeMethods]::DestroyIcon($hicon) } catch {}
+
+            # replace previous managed icon if present
+            if ($script:trayIconIcon) {
+                try { $script:trayIconIcon.Dispose() } catch {}
+            }
+
+            $script:notifyIcon.Icon = $icon
+            $script:trayIconIcon = $icon
+
+            $bitmap.Dispose()
+            $ms.Dispose()
+        } catch {
+            # ignore icon update failures
+        }
+    }
+
+    # Use script scope for NotifyIcon to keep it alive
+    $script:notifyIcon = New-Object System.Windows.Forms.NotifyIcon
+    $script:reallyClose = $false
+    $script:notifyIcon.Text = "goodTimes Widget"
+    $script:notifyIcon.Visible = $true
+
+    # Capture script file name once for reuse in handlers
+    $ScriptName = $MyInvocation.ScriptName
+
+    # Helper to open the full 'Show times' view (used by double-click and tray menu)
+    function Invoke-ShowTimes {
+        if ($forceWidgetDoubleClickBehavior -eq 'joined') {
+            Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j 1 -m $maxWorkHours"
+        }
+        elseif ($forceWidgetDoubleClickBehavior -eq 'breaks') {
+            Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j 0 -m $maxWorkHours -i 1"
+        }
+        else {
+            Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j $joinIntervals -m $maxWorkHours -i $showLogoff"
+        }
+    }
+
+    # Create a tray context menu with Open, Show times and Exit
+    $cm = New-Object System.Windows.Forms.ContextMenuStrip
+    $openItem = New-Object System.Windows.Forms.ToolStripMenuItem('Open')
+    $showTimesItem = New-Object System.Windows.Forms.ToolStripMenuItem('Show times')
+    $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem('Exit')
+    $cm.Items.AddRange(@($openItem, $showTimesItem, $exitItem))
+    $script:notifyIcon.ContextMenuStrip = $cm
+    
+    # Ensure we create an initial tray icon once the widget is loaded and rendered
+    $Widget.Add_Loaded({
+        try { Set-TrayIconFromVisual -Visual $Widget } catch {}
+    })
+
+    # Restore window on tray icon double-click
+    $script:notifyIcon.Add_DoubleClick({
+        $Widget.ShowInTaskbar = $true
+        $Widget.WindowState = 'Normal'
+        $Widget.Show()
+        $Widget.Activate()
+    })
+
+    # Open menu item
+    $openItem.Add_Click({
+        $Widget.ShowInTaskbar = $true
+        $Widget.WindowState = 'Normal'
+        $Widget.Show()
+        $Widget.Activate()
+    })
+
+    # Show times menu item - same behavior as double-clicking the widget
+    $showTimesItem.Add_Click({
+        Invoke-ShowTimes
+    })
+
+    # Exit menu item — perform a real exit
+    $exitItem.Add_Click({
+        $script:reallyClose = $true
+        try {
+            if ($updateTimer) { $updateTimer.Stop() }
+            if ($syncTimer) { $syncTimer.Stop() }
+            if ($script:notifyIcon) {
+                    try { $script:notifyIcon.Visible = $false } catch {}
+                    try { $script:notifyIcon.Dispose() } catch {}
+                    # dispose any managed icon we created
+                    try { if ($script:trayIconIcon) { $script:trayIconIcon.Dispose(); $script:trayIconIcon = $null } } catch {}
+            }
+            if ($Widget) { $Widget.Close() }
+        } catch {
+            # ignore any cleanup errors
+        }
+    })
+
+    # Minimize to tray instead of closing
     $Close_Widget.Add_MouseLeftButtonDown({
-        $Widget.Close()
+        $Widget.WindowState = 'Minimized'
+        $Widget.ShowInTaskbar = $false
+        $script:notifyIcon.Visible = $true
+    })
+
+    # Prevent window from closing, minimize to tray instead so dispatcher keeps running
+    $Widget.Add_Closing({
+        if ($script:reallyClose) {
+            # allow closing
+            return
+        }
+        $_.Cancel = $true
+        $Widget.WindowState = 'Minimized'
+        $Widget.ShowInTaskbar = $false
+        $script:notifyIcon.Visible = $true
+    })
+    
+    # Clean up tray icon when window is closed
+    $Widget.Add_Closed({
+        if ($script:notifyIcon) {
+            try { $script:notifyIcon.Visible = $false } catch {}
+            try { $script:notifyIcon.Dispose() } catch {}
+            try { if ($script:trayIconIcon) { $script:trayIconIcon.Dispose(); $script:trayIconIcon = $null } } catch {}
+            $script:notifyIcon = $null
+        }
     })
 
     $MinMax_Widget.Add_MouseLeftButtonDown({
@@ -810,19 +981,7 @@ function Show-Widget {
     $Widget.Add_MouseDoubleClick({
     #    $_.Button -eq [System.Windows.Forms.MouseButtons]::Left
     #    $Widget.Close()
-        $ScriptName = $MyInvocation.ScriptName
-        if ($forceWidgetDoubleClickBehavior -eq 'joined')
-        {
-            Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j 1 -m $maxWorkingHours"
-        }
-        elseif ($forceWidgetDoubleClickBehavior -eq 'breaks')
-        {
-            Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j 0 -m $maxWorkingHours -i 1"
-        }
-        else
-        {
-            Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j $joinIntervals -m $maxWorkingHours -i $showLogoff"
-        }
+        Invoke-ShowTimes
     })
 
     $updateTimer = [System.Windows.Threading.DispatcherTimer]::new()
