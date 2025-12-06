@@ -347,7 +347,7 @@ function Show-Widget {
             </Path.Data>
             <Path.Fill>
                 <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
-                    <GradientStop Color="#FFFF80" Offset="0.0" />
+                    <GradientStop Color="#FFFFA0" Offset="0.0" />
                     <GradientStop Color="#FFFF00" Offset="1.0" />
                 </RadialGradientBrush>
             </Path.Fill>
@@ -372,7 +372,7 @@ function Show-Widget {
             </Path.Data>
             <Path.Fill>
                 <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
-                    <GradientStop Color="#FF8080" Offset="0.0" />
+                    <GradientStop Color="#FFA0A0" Offset="0.0" />
                     <GradientStop Color="#FF4040" Offset="1.0" />
                 </RadialGradientBrush>
             </Path.Fill>
@@ -397,7 +397,7 @@ function Show-Widget {
             </Path.Data>
             <Path.Fill>
                 <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
-                    <GradientStop Color="#80FF80" Offset="0.0" />
+                    <GradientStop Color="#A0FFA0" Offset="0.0" />
                     <GradientStop Color="#40FF40" Offset="1.0" />
                 </RadialGradientBrush>
             </Path.Fill>
@@ -422,7 +422,7 @@ function Show-Widget {
             </Path.Data>
             <Path.Fill>
                 <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
-                    <GradientStop Color="#80FF80" Offset="0.0" />
+                    <GradientStop Color="#A0FFA0" Offset="0.0" />
                     <GradientStop Color="#40FF40" Offset="1.0" />
                 </RadialGradientBrush>
             </Path.Fill>
@@ -447,7 +447,7 @@ function Show-Widget {
             </Path.Data>
             <Path.Fill>
                 <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
-                    <GradientStop Color="#0080FF" Offset="0.0" />
+                    <GradientStop Color="#00A0FF" Offset="0.0" />
                     <GradientStop Color="#0040FF" Offset="1.0" />
                 </RadialGradientBrush>
             </Path.Fill>
@@ -455,7 +455,7 @@ function Show-Widget {
         <Ellipse x:Name="Path_ActualWorktime12h" Stroke="Black" StrokeThickness="1" SnapsToDevicePixels="True" Canvas.Left="8" Canvas.Top="8" Height="84" Width="84" Opacity="0.2">
             <Ellipse.Fill>
                 <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="1.0" RadiusY="1.0">
-                    <GradientStop Color="#0080FF" Offset="0.0" />
+                    <GradientStop Color="#00A0FF" Offset="0.0" />
                     <GradientStop Color="#0040FF" Offset="1.0" />
                 </RadialGradientBrush>
             </Ellipse.Fill>
