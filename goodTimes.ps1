@@ -531,8 +531,42 @@ function Show-Widget {
             <DropShadowEffect Color="Black" ShadowDepth="3" BlurRadius="6" Opacity="0.4" />
         </Canvas.Effect>
 
+        <Canvas.Resources>
+            <ControlTemplate x:Key="KnightRiderToolTipTemplate" TargetType="ToolTip">
+                <Grid>
+                    <!-- Outer border with animated gradient brush -->
+                    <Border x:Name="Outer" CornerRadius="4" Padding="3" Background="Silver" BorderThickness="2">
+                        <Border.BorderBrush>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Color="#333333" Offset="0.0" x:Name="gDark1"/>
+                                <GradientStop Color="#FF8080" Offset="0.0" x:Name="gBright"/>
+                                <GradientStop Color="#333333" Offset="0.2" x:Name="gDark2"/>
+                            </LinearGradientBrush>
+                        </Border.BorderBrush>
+
+                        <ContentPresenter Margin="0" />
+                    </Border>
+                </Grid>
+
+                <ControlTemplate.Triggers>
+                    <EventTrigger RoutedEvent="ToolTip.Opened">
+                        <BeginStoryboard>
+                            <Storyboard RepeatBehavior="Forever">
+                                <DoubleAnimation Storyboard.TargetName="gBright" Storyboard.TargetProperty="Offset"
+                                                From="-0.3" To="1.3" Duration="0:0:1.0" AutoReverse="True" />
+                                <DoubleAnimation Storyboard.TargetName="gDark1" Storyboard.TargetProperty="Offset"
+                                                From="-0.5" To="1.1" Duration="0:0:1.0" AutoReverse="True" />
+                                <DoubleAnimation Storyboard.TargetName="gDark2" Storyboard.TargetProperty="Offset"
+                                                From="-0.1" To="1.5" Duration="0:0:1.0" AutoReverse="True" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate>
+        </Canvas.Resources>
+
         <Canvas.ToolTip>
-            <ToolTip Background="Silver">
+            <ToolTip Template="{StaticResource KnightRiderToolTipTemplate}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
