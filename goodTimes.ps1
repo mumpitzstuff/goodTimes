@@ -795,12 +795,8 @@ function Show-Widget {
 
     # Native method to destroy icon handles
     Add-Type -Namespace User32 -Name NativeMethods -MemberDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class NativeMethods {
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern bool DestroyIcon(IntPtr hIcon);
-}
+[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+public static extern bool DestroyIcon(System.IntPtr hIcon);
 '@
 
     # Use script scope for NotifyIcon to keep it alive
@@ -832,7 +828,7 @@ public static class NativeMethods {
     }
 
     $syncIconTimer = [System.Windows.Threading.DispatcherTimer]::new()
-    $syncIconTimer.Interval = New-TimeSpan -Minutes 1
+    $syncIconTimer.Interval = New-TimeSpan -Minutes 15
     $syncIconTimer.Add_Tick($SyncTrayIcon)
     $syncIconTimer.Start()
 
@@ -950,18 +946,18 @@ public static class NativeMethods {
 
     # Minimize to tray instead of closing
     $Close_Widget.Add_MouseLeftButtonDown({
-        $Widget.Opacity = 0.0
-        $Widget.WindowState = 'Minimized'
+        #$Widget.Opacity = 0.0
+        #$Widget.WindowState = 'Minimized'
+        $Widget.Visibility = [System.Windows.Visibility]::Hidden
         $Widget.ShowInTaskbar = $false
         $script:notifyIcon.Visible = $true
-        # hide will close the dialog and stop the dispatcher so we can not use it here
-        #$Widget.Visibility = [System.Windows.Visibility]::Hidden
     })
 
     # Prevent window from closing, minimize to tray instead so dispatcher keeps running
     $Widget.Add_Closing({
         if ($script:reallyClose) {
             # allow closing
+            [System.Windows.Forms.Application]::Exit()
             return
         }
         $_.Cancel = $true
@@ -970,6 +966,7 @@ public static class NativeMethods {
     # Clean up tray icon when window is closed
     $Widget.Add_Closed({
         Invoke-Cleanup
+        [System.Windows.Forms.Application]::Exit()
     })
 
     $MinMax_Widget.Add_MouseLeftButtonDown({
@@ -1004,8 +1001,10 @@ public static class NativeMethods {
     &$UpdateWidget
 
     # Show the window (modal)
-    $Widget.ShowDialog() | Out-Null
-    
+    #$Widget.ShowDialog() | Out-Null
+    $Widget.Show()
+    [System.Windows.Forms.Application]::Run()
+        
     Invoke-Cleanup
 }
 
