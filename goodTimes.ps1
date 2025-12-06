@@ -302,21 +302,21 @@ function Show-Widget {
     Param
     (
         [Parameter(Mandatory=$true, Position=0)]
-        [double] $startTime,
+        [datetime] $startTime,
         [Parameter(Mandatory=$true, Position=1)]
-        [double] $normalWorkHours,
+        [double]   $normalWorkHours,
         [Parameter(Mandatory=$true, Position=2)]
-        [double] $maxWorkHours,
+        [double]   $maxWorkHours,
         [Parameter(Mandatory=$true, Position=3)]
-        [double] $break1,
+        [double]   $break1,
         [Parameter(Mandatory=$true, Position=4)]
-        [double] $break2,
+        [double]   $break2,
         [Parameter(Mandatory=$true, Position=5)]
-        [double] $breakDeduction1,
+        [double]   $breakDeduction1,
         [Parameter(Mandatory=$true, Position=6)]
-        [double] $breakDeduction2,
+        [double]   $breakDeduction2,
         [Parameter(Mandatory=$true, Position=7)]
-        [double] $unplannedBreaks
+        [double]   $unplannedBreaks
     )
 
 [xml]$xaml = @"
@@ -631,8 +631,10 @@ function Show-Widget {
         # hour = 360 / 12 = 30
         # minute = 360 / 12 / 60 = 0.5
 
+        $startTimeHours = $startTime.TimeOfDay.TotalHours
+
         #normal worktime
-        $start = $startTime
+        $start = $startTimeHours
         $rotationAngle = $start * 30
         $end = $normalWorkHours + $break1 + $break2
         $wedgeAngle = $end * 30
@@ -646,7 +648,7 @@ function Show-Widget {
         $LineSegmentB_NormalWorktime.Point = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
 
         #max worktime
-        $start = $startTime + $end
+        $start = $startTimeHours + $end
         $rotationAngle = $start * 30
         $end = $maxWorkHours - $normalWorkHours
         $wedgeAngle = $end * 30
@@ -661,7 +663,7 @@ function Show-Widget {
 
         #break1
         if ($break1 -gt 0) {
-            $start = $startTime + $breakDeduction1
+            $start = $startTimeHours + $breakDeduction1
             $rotationAngle = $start * 30
             $end = $break1
             $wedgeAngle = $end * 30
@@ -680,7 +682,7 @@ function Show-Widget {
 
         #break2
         if ($break2 -gt 0) {
-            $start = $startTime + $breakDeduction2
+            $start = $startTimeHours + $breakDeduction2
             $rotationAngle = $start * 30
             $end = $break2
             $wedgeAngle = $end * 30
@@ -698,9 +700,10 @@ function Show-Widget {
         }
 
         #actual worktime
-        $start = $startTime
+        $start = $startTimeHours
         $rotationAngle = $start * 30
-        $end = (Get-Date).TimeOfDay.TotalHours - $startTime - $unplannedBreaks
+        $timeDiff = New-TimeSpan -Start $startTime -End (Get-Date)
+        $end = $timeDiff.TotalHours - $unplannedBreaks
         if ($end -ge 12.0) {
             $end = $end % 12.0
         }
@@ -718,10 +721,10 @@ function Show-Widget {
         $LineSegmentB_ActualWorktime.Point = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
 
         #tooltip
-        $Tooltip_StartTime.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($startTime * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
-        $Tooltip_NormalWorktime.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes (($startTime * 60) + ($normalWorkHours * 60) + ($break1 * 60) + ($break2 * 60)))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
-        $Tooltip_MaxWorktime.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes (($startTime * 60) + ($maxWorkHours * 60) + ($break1 * 60) + ($break2 * 60)))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
-        $worktime = (Get-Date).TimeOfDay.TotalHours - $startTime - $unplannedBreaks
+        $Tooltip_StartTime.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($startTimeHours * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        $Tooltip_NormalWorktime.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes (($startTimeHours * 60) + ($normalWorkHours * 60) + ($break1 * 60) + ($break2 * 60)))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        $Tooltip_MaxWorktime.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes (($startTimeHours * 60) + ($maxWorkHours * 60) + ($break1 * 60) + ($break2 * 60)))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        $worktime = $timeDiff.TotalHours - $unplannedBreaks
         $worktimeAdj = $worktime
         if ($worktime -ge $breakDeduction1) {
             $worktimeAdj -= $break1
@@ -756,9 +759,6 @@ function Show-Widget {
         }
 
         $Widget.UpdateLayout()
-
-        # update tray icon to reflect current widget visual
-        try { Set-TrayIconFromVisual -Visual $Widget } catch {}
     }
 
     $SyncWidget =
@@ -769,9 +769,15 @@ function Show-Widget {
         $entry = $log[-1]
         $attrs = getLogAttrs($entry)
 
-        $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
+        $timeDiff = New-TimeSpan -Start $entry[0][0] -End (Get-Date)
+        $unplannedBreaks = $timeDiff.TotalHours - $attrs.uptime.TotalHours
 
         $refUnplannedBreaks.Value = $unplannedBreaks
+    }
+
+    $SyncTrayIcon =
+    {
+        try { if ($script:notifyIcon.Visible -eq $false) { Set-TrayIconFromVisual -Visual $Widget } } catch {}
     }
 
     #Read the form
@@ -797,6 +803,39 @@ public static class NativeMethods {
 }
 '@
 
+    # Use script scope for NotifyIcon to keep it alive
+    $script:notifyIcon = New-Object System.Windows.Forms.NotifyIcon
+    $script:reallyClose = $false
+    $script:notifyIcon.Text = "goodTimes Widget"
+    $script:notifyIcon.Visible = $false
+    
+    $updateTimer = [System.Windows.Threading.DispatcherTimer]::new()
+    $updateTimer.Interval = New-TimeSpan -Minutes 1
+    $updateTimer.Add_Tick($UpdateWidget)
+    $updateTimer.Start()
+
+    $syncTimer = $null
+    if ($joinIntervals -eq 0) {
+        $syncTimer = [System.Windows.Threading.DispatcherTimer]::new()
+        $syncTimer.Interval = New-TimeSpan -Minutes 15
+        $syncTimer.Add_Tick({Invoke-Command -ScriptBlock $SyncWidget -ArgumentList ([ref]$unplannedBreaks)})
+        $syncTimer.Start()
+
+        if ($null -eq $unplannedBreaks -or [double]::IsNaN([double]$unplannedBreaks)) {
+            $Tooltip_UnplannedBreaks.Text = '00:00'
+        } else {
+            $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
+        }
+    }
+    else {
+        $Tooltip_OptionalUnplannedBreaks.Visibility = [System.Windows.Visibility]::Collapsed
+    }
+
+    $syncIconTimer = [System.Windows.Threading.DispatcherTimer]::new()
+    $syncIconTimer.Interval = New-TimeSpan -Minutes 1
+    $syncIconTimer.Add_Tick($SyncTrayIcon)
+    $syncIconTimer.Start()
+
     # helper: set notify icon from the given visual (creates an Icon in memory and assigns it)
     function Set-TrayIconFromVisual {
         param(
@@ -804,14 +843,12 @@ public static class NativeMethods {
             [Parameter(Mandatory=$false)][int]$Size = 64
         )
         try {
-            $dpiX = 96.0
-            $dpiY = 96.0
-
-            $rt = New-Object System.Windows.Media.Imaging.RenderTargetBitmap($Size, $Size, $dpiX, $dpiY, [System.Windows.Media.PixelFormats]::Pbgra32)
+            $dpi = 96.0
+            $rt = New-Object System.Windows.Media.Imaging.RenderTargetBitmap($Size, $Size, $dpi, $dpi, [System.Windows.Media.PixelFormats]::Pbgra32)
             $vb = New-Object System.Windows.Media.VisualBrush($Visual)
             $drawing = New-Object System.Windows.Media.DrawingVisual
             $ctx = $drawing.RenderOpen()
-            $ctx.DrawRectangle($vb, $null, [System.Windows.Rect]::new(0,0,$Size,$Size))
+            $ctx.DrawRectangle($vb, $null, [System.Windows.Rect]::new(0, 0, $Size, $Size))
             $ctx.Close()
             $rt.Render($drawing)
 
@@ -819,7 +856,7 @@ public static class NativeMethods {
             $encoder.Frames.Add([System.Windows.Media.Imaging.BitmapFrame]::Create($rt))
             $ms = New-Object System.IO.MemoryStream
             $encoder.Save($ms)
-            $ms.Seek(0,'Begin') | Out-Null
+            $ms.Seek(0, 'Begin') | Out-Null
             $bitmap = [System.Drawing.Bitmap]::FromStream($ms)
 
             $hicon = $bitmap.GetHicon()
@@ -831,13 +868,7 @@ public static class NativeMethods {
             try { $iconFromHandle.Dispose() } catch {}
             try { [User32.NativeMethods]::DestroyIcon($hicon) } catch {}
 
-            # replace previous managed icon if present
-            if ($script:trayIconIcon) {
-                try { $script:trayIconIcon.Dispose() } catch {}
-            }
-
             $script:notifyIcon.Icon = $icon
-            $script:trayIconIcon = $icon
 
             $bitmap.Dispose()
             $ms.Dispose()
@@ -846,17 +877,10 @@ public static class NativeMethods {
         }
     }
 
-    # Use script scope for NotifyIcon to keep it alive
-    $script:notifyIcon = New-Object System.Windows.Forms.NotifyIcon
-    $script:reallyClose = $false
-    $script:notifyIcon.Text = "goodTimes Widget"
-    $script:notifyIcon.Visible = $true
-
-    # Capture script file name once for reuse in handlers
-    $ScriptName = $MyInvocation.ScriptName
-
     # Helper to open the full 'Show times' view (used by double-click and tray menu)
     function Invoke-ShowTimes {
+        $ScriptName = $MyInvocation.ScriptName
+        
         if ($forceWidgetDoubleClickBehavior -eq 'joined') {
             Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j 1 -m $maxWorkHours"
         }
@@ -865,6 +889,27 @@ public static class NativeMethods {
         }
         else {
             Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j $joinIntervals -m $maxWorkHours -i $showLogoff"
+        }
+    }
+
+    # Helper to restore the widget from tray
+    function Invoke-ReOpen {
+        $Widget.WindowState = 'Normal'
+        $Widget.Opacity = 1.0
+        $Widget.Show()
+        $Widget.Activate()
+        $script:notifyIcon.Visible = $false
+    }
+
+    # Helper function to cleanup everything before exiting
+    function Invoke-Cleanup {
+        try {
+            if ($updateTimer) { $updateTimer.Stop() }
+            if ($syncTimer) { $syncTimer.Stop() }
+            if ($syncIconTimer) { $syncIconTimer.Stop() }
+            try { if ($script:notifyIcon) { $script:notifyIcon.Visible = $false; $script:notifyIcon.Dispose(); $script:notifyIcon = $null } } catch {}
+        } catch {
+            # ignore any cleanup errors
         }
     }
 
@@ -883,18 +928,12 @@ public static class NativeMethods {
 
     # Restore window on tray icon double-click
     $script:notifyIcon.Add_DoubleClick({
-        $Widget.ShowInTaskbar = $true
-        $Widget.WindowState = 'Normal'
-        $Widget.Show()
-        $Widget.Activate()
+        Invoke-ReOpen
     })
 
     # Open menu item
     $openItem.Add_Click({
-        $Widget.ShowInTaskbar = $true
-        $Widget.WindowState = 'Normal'
-        $Widget.Show()
-        $Widget.Activate()
+        Invoke-ReOpen
     })
 
     # Show times menu item - same behavior as double-clicking the widget
@@ -905,26 +944,18 @@ public static class NativeMethods {
     # Exit menu item — perform a real exit
     $exitItem.Add_Click({
         $script:reallyClose = $true
-        try {
-            if ($updateTimer) { $updateTimer.Stop() }
-            if ($syncTimer) { $syncTimer.Stop() }
-            if ($script:notifyIcon) {
-                    try { $script:notifyIcon.Visible = $false } catch {}
-                    try { $script:notifyIcon.Dispose() } catch {}
-                    # dispose any managed icon we created
-                    try { if ($script:trayIconIcon) { $script:trayIconIcon.Dispose(); $script:trayIconIcon = $null } } catch {}
-            }
-            if ($Widget) { $Widget.Close() }
-        } catch {
-            # ignore any cleanup errors
-        }
+        Invoke-Cleanup
+        try { if ($Widget) { $Widget.Close() } } catch {}
     })
 
     # Minimize to tray instead of closing
     $Close_Widget.Add_MouseLeftButtonDown({
+        $Widget.Opacity = 0.0
         $Widget.WindowState = 'Minimized'
         $Widget.ShowInTaskbar = $false
         $script:notifyIcon.Visible = $true
+        # hide will close the dialog and stop the dispatcher so we can not use it here
+        #$Widget.Visibility = [System.Windows.Visibility]::Hidden
     })
 
     # Prevent window from closing, minimize to tray instead so dispatcher keeps running
@@ -934,19 +965,11 @@ public static class NativeMethods {
             return
         }
         $_.Cancel = $true
-        $Widget.WindowState = 'Minimized'
-        $Widget.ShowInTaskbar = $false
-        $script:notifyIcon.Visible = $true
     })
     
     # Clean up tray icon when window is closed
     $Widget.Add_Closed({
-        if ($script:notifyIcon) {
-            try { $script:notifyIcon.Visible = $false } catch {}
-            try { $script:notifyIcon.Dispose() } catch {}
-            try { if ($script:trayIconIcon) { $script:trayIconIcon.Dispose(); $script:trayIconIcon = $null } } catch {}
-            $script:notifyIcon = $null
-        }
+        Invoke-Cleanup
     })
 
     $MinMax_Widget.Add_MouseLeftButtonDown({
@@ -955,56 +978,21 @@ public static class NativeMethods {
 
             $Minimize_Icon.Visibility = [System.Windows.Visibility]::Hidden
             $Maximize_Icon.Visibility = [System.Windows.Visibility]::Visible
-
-            $Widget.UpdateLayout()
         }
         else {
             $Widget.Topmost = $true
 
             $Minimize_Icon.Visibility = [System.Windows.Visibility]::Visible
             $Maximize_Icon.Visibility = [System.Windows.Visibility]::Hidden
-
-            $Widget.UpdateLayout()
         }
+
+        $Widget.UpdateLayout()
     })
 
-    #<Ellipse x:Name="SuspendResume_Worktime" Width="8" Height="8" Fill="Green" Stroke="Black" StrokeThickness="0" SnapsToDevicePixels="True" Opacity="0.9" Canvas.Left="2" Canvas.Top="2" />
-    #$SuspendResume_Worktime.Add_MouseLeftButtonDown({
-    #    if ($SuspendResume_Worktime.Fill -eq [System.Windows.Media.Brushes]::Green) {
-    #        $SuspendResume_Worktime.Fill = [System.Windows.Media.Brushes]::Red
-    #    }
-    #    else {
-    #        $SuspendResume_Worktime.Fill = [System.Windows.Media.Brushes]::Green
-    #    }
-    #})
-
     $Widget.Add_MouseDoubleClick({
-    #    $_.Button -eq [System.Windows.Forms.MouseButtons]::Left
-    #    $Widget.Close()
         Invoke-ShowTimes
     })
 
-    $updateTimer = [System.Windows.Threading.DispatcherTimer]::new()
-    $updateTimer.Interval = New-TimeSpan -Minutes 1
-    $updateTimer.Add_Tick($UpdateWidget)
-    $updateTimer.Start()
-
-    $syncTimer
-    if ($joinIntervals -eq 0) {
-        $syncTimer = [System.Windows.Threading.DispatcherTimer]::new()
-        $syncTimer.Interval = New-TimeSpan -Minutes 15
-        $syncTimer.Add_Tick({Invoke-Command -ScriptBlock $SyncWidget -ArgumentList ([ref]$unplannedBreaks)})
-        $syncTimer.Start()
-
-        if ($null -eq $unplannedBreaks -or [double]::IsNaN([double]$unplannedBreaks)) {
-            $Tooltip_UnplannedBreaks.Text = '00:00'
-        } else {
-            $Tooltip_UnplannedBreaks.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes ($unplannedBreaks * 60))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
-        }
-    }
-    else {
-        $Tooltip_OptionalUnplannedBreaks.Visibility = [System.Windows.Visibility]::Collapsed
-    }
     $Widget.Topmost = $topMost
     if ($topPosition -ne -1 -and $leftPosition -ne -1) {
         # 0 = Manual
@@ -1015,12 +1003,10 @@ public static class NativeMethods {
 
     &$UpdateWidget
 
+    # Show the window (modal)
     $Widget.ShowDialog() | Out-Null
-
-    $updateTimer.Stop()
-    if ($joinIntervals -eq 0) {
-        $syncTimer.Stop()
-    }
+    
+    Invoke-Cleanup
 }
 
 function New-WPFMessageBox {
@@ -1821,10 +1807,11 @@ elseif ($mode -eq 'widget') {
     #[Console.Window]::ShowWindow($hWindow, 0) | Out-Null
 
     if ($joinIntervals -eq 0) {
-        $unplannedBreaks = (Get-Date).TimeOfDay.TotalHours - $entry[0][0].TimeOfDay.TotalHours - $attrs.uptime.TotalHours
+        $timeDiff = New-TimeSpan -Start $entry[0][0] -End (Get-Date)
+        $unplannedBreaks = $timeDiff.TotalHours - $attrs.uptime.TotalHours
     }
 
-    Show-Widget $entry[0][0].TimeOfDay.TotalHours $workinghours $maxWorkingHours $breakfastBreak $lunchBreak $breakDeduction1 $breakDeduction2 $unplannedBreaks
+    Show-Widget $entry[0][0] $workinghours $maxWorkingHours $breakfastBreak $lunchBreak $breakDeduction1 $breakDeduction2 $unplannedBreaks
 
     #[Console.Window]::ShowWindow($hWindow, 4) | Out-Null
 
