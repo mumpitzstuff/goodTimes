@@ -891,7 +891,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
     # Helper to restore the widget from tray
     function Invoke-ReOpen {
         $Widget.WindowState = 'Normal'
-        $Widget.Opacity = 1.0
+        #$Widget.Opacity = 1.0
         $Widget.Show()
         $Widget.Activate()
         $script:notifyIcon.Visible = $false
