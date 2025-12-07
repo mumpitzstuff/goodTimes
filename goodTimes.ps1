@@ -538,9 +538,9 @@ function Show-Widget {
                     <Border x:Name="Outer" CornerRadius="4" Padding="3" Background="Silver" BorderThickness="2">
                         <Border.BorderBrush>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                <GradientStop Color="#333333" Offset="0.0" x:Name="gDark1"/>
-                                <GradientStop Color="#FF8080" Offset="0.0" x:Name="gBright"/>
-                                <GradientStop Color="#333333" Offset="0.2" x:Name="gDark2"/>
+                                <GradientStop Color="Transparent" Offset="0.0" x:Name="KnightRiderToolTipTemplate_Transparent1"/>
+                                <GradientStop Color="#FFFF00" Offset="0.0" x:Name="KnightRiderToolTipTemplate_Color"/>
+                                <GradientStop Color="Transparent" Offset="0.2" x:Name="KnightRiderToolTipTemplate_Transparent2"/>
                             </LinearGradientBrush>
                         </Border.BorderBrush>
 
@@ -552,11 +552,11 @@ function Show-Widget {
                     <EventTrigger RoutedEvent="ToolTip.Opened">
                         <BeginStoryboard>
                             <Storyboard RepeatBehavior="Forever">
-                                <DoubleAnimation Storyboard.TargetName="gBright" Storyboard.TargetProperty="Offset"
+                                <DoubleAnimation Storyboard.TargetName="KnightRiderToolTipTemplate_Color" Storyboard.TargetProperty="Offset"
                                                 From="-0.3" To="1.3" Duration="0:0:1.0" AutoReverse="True" />
-                                <DoubleAnimation Storyboard.TargetName="gDark1" Storyboard.TargetProperty="Offset"
+                                <DoubleAnimation Storyboard.TargetName="KnightRiderToolTipTemplate_Transparent1" Storyboard.TargetProperty="Offset"
                                                 From="-0.5" To="1.1" Duration="0:0:1.0" AutoReverse="True" />
-                                <DoubleAnimation Storyboard.TargetName="gDark2" Storyboard.TargetProperty="Offset"
+                                <DoubleAnimation Storyboard.TargetName="KnightRiderToolTipTemplate_Transparent2" Storyboard.TargetProperty="Offset"
                                                 From="-0.1" To="1.5" Duration="0:0:1.0" AutoReverse="True" />
                             </Storyboard>
                         </BeginStoryboard>
@@ -792,6 +792,23 @@ function Show-Widget {
             $Maximize_Icon.Visibility = [System.Windows.Visibility]::Visible
         }
 
+        try {
+            $tooltip = $Canvas.ToolTip
+            if ($null -ne $tooltip -and $tooltip.Template) {
+                $KnightRiderToolTipTemplate_Color = $tooltip.Template.FindName("KnightRiderToolTipTemplate_Color", $tooltip)
+                if ($null -ne $KnightRiderToolTipTemplate_Color) {
+                    $colorConverter = New-Object System.Windows.Media.ColorConverter
+
+                    if ($worktimeAdj -ge $maxWorkHours) {
+                        $KnightRiderToolTipTemplate_Color.Color = $colorConverter.ConvertFromString("#FF4040")
+                    }
+                    elseif ($worktimeAdj -ge $normalWorkHours) {
+                        $KnightRiderToolTipTemplate_Color.Color = $colorConverter.ConvertFromString("#40FF40")
+                    }
+                }
+            }
+        } catch {}
+
         $Widget.UpdateLayout()
     }
 
@@ -838,7 +855,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
     $script:reallyClose = $false
     $script:notifyIcon.Text = "goodTimes Widget"
     $script:notifyIcon.Visible = $false
-    
+
     $updateTimer = [System.Windows.Threading.DispatcherTimer]::new()
     $updateTimer.Interval = New-TimeSpan -Minutes 1
     $updateTimer.Add_Tick($UpdateWidget)
@@ -910,7 +927,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
     # Helper to open the full 'Show times' view (used by double-click and tray menu)
     function Invoke-ShowTimes {
         $ScriptName = $MyInvocation.ScriptName
-        
+
         if ($forceWidgetDoubleClickBehavior -eq 'joined') {
             Start-Process PowerShell.exe -ArgumentList "-noexit -EP Bypass", "-command $ScriptName -l $historyLength -h $workinghours -b1 $breakfastBreak -b2 $lunchBreak -p $precision -j 1 -m $maxWorkHours"
         }
@@ -950,7 +967,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
     $exitItem = New-Object System.Windows.Forms.ToolStripMenuItem('Exit')
     $cm.Items.AddRange(@($openItem, $showTimesItem, $exitItem))
     $script:notifyIcon.ContextMenuStrip = $cm
-    
+
     # Ensure we create an initial tray icon once the widget is loaded and rendered
     $Widget.Add_Loaded({
         try { Set-TrayIconFromVisual -Visual $Widget } catch {}
@@ -996,7 +1013,7 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         }
         $_.Cancel = $true
     })
-    
+
     # Clean up tray icon when window is closed
     $Widget.Add_Closed({
         Invoke-Cleanup
@@ -1024,6 +1041,11 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
         Invoke-ShowTimes
     })
 
+    # Add handler to update widget (including color) when tooltip is opened
+    $Canvas.ToolTip.Add_Opened({
+        &$UpdateWidget
+    })
+
     $Widget.Topmost = $topMost
     if ($topPosition -ne -1 -and $leftPosition -ne -1) {
         # 0 = Manual
@@ -1034,11 +1056,9 @@ public static extern bool DestroyIcon(System.IntPtr hIcon);
 
     &$UpdateWidget
 
-    # Show the window (modal)
-    #$Widget.ShowDialog() | Out-Null
     $Widget.Show()
     [System.Windows.Forms.Application]::Run()
-        
+
     Invoke-Cleanup
 }
 
@@ -1530,7 +1550,7 @@ $updateWorktimes = {
         [Parameter(Mandatory=$false)]
         [int]$eventPeriod = $historyLength
     )
-    
+
     # create an array of filterHashTables that filter boot and shutdown events from the desired period
     $startTime = (get-date).addDays(-$eventPeriod)
 
