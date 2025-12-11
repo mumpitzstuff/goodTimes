@@ -1,16 +1,22 @@
 {
   # e.g. en-GB or en-US would be possible
   "cultureInfo": "de-DE",
-  # after how many hours should the breakfastBreak be deducted
+  # after how many hours should the breakfastBreak be deducted (relative to start time)
   "breakDeduction1": 3.0,
-  # after how many hours should the lunchBreak be deducted
+  # after how many hours should the lunchBreak be deducted (relative to start time)
   "breakDeduction2": 6.0,
+  # ALTERNATIVE: Use absolute times instead of relative hours
+  # If these are set, they override breakDeduction1 and breakDeduction2
+  # Examples: "09:00", "12:30"
+  # Times are always for the current day. If a break time is before the start time, it will be ignored.
+  # "breakAbsoluteTime1": "09:00",
+  # "breakAbsoluteTime2": "12:00",
   # break threshold in minutes (smaller breaks will be ignored e.g. PC reboots)
   "breakThreshold": 3.0,
   # default widget window state
   "topMost": true,
   # default widget window position (-1 for top and left means CenterScreen)
-  # both values must be set to different values than -1 if you want to change it 
+  # both values must be set to different values than -1 if you want to change it
   "topPosition": -1,
   "leftPosition": -1,
   # force double click behavior for widget

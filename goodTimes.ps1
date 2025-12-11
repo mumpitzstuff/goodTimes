@@ -148,6 +148,8 @@ $defaultConfig = @{
     cultureInfo                    = 'de-DE'
     breakDeduction1                = 3.0
     breakDeduction2                = 6.0
+    breakAbsoluteTime1             = $null
+    breakAbsoluteTime2             = $null
     breakThreshold                 = 3.0
     topMost                        = $true
     topPosition                    = -1
@@ -185,6 +187,8 @@ function Get-ConfigValue {
 $cultureInfo                    = Get-ConfigValue 'cultureInfo'                    $defaultConfig.cultureInfo
 $breakDeduction1                = [double](Get-ConfigValue 'breakDeduction1'       $defaultConfig.breakDeduction1)
 $breakDeduction2                = [double](Get-ConfigValue 'breakDeduction2'       $defaultConfig.breakDeduction2)
+$breakAbsoluteTime1             = Get-ConfigValue 'breakAbsoluteTime1'             $defaultConfig.breakAbsoluteTime1
+$breakAbsoluteTime2             = Get-ConfigValue 'breakAbsoluteTime2'             $defaultConfig.breakAbsoluteTime2
 $breakThreshold                 = [double](Get-ConfigValue 'breakThreshold'        $defaultConfig.breakThreshold)
 $topMost                        = [bool]  (Get-ConfigValue 'topMost'               $defaultConfig.topMost)
 $topPosition                    = [int]   (Get-ConfigValue 'topPosition'           $defaultConfig.topPosition)
@@ -193,6 +197,56 @@ $forceWidgetDoubleClickBehavior = Get-ConfigValue 'forceWidgetDoubleClickBehavio
 
 
 # helper functions to calculate the required attributes
+
+# Convert absolute time to relative hours from start time
+function ConvertAbsoluteTimeToRelative($absoluteTime, $startTime) {
+    if ([string]::IsNullOrWhiteSpace($absoluteTime)) {
+        return $null
+    }
+
+    try {
+        # Parse the absolute time (e.g., "09:00" or "12:30")
+        $timeParts = $absoluteTime -split ':'
+        if ($timeParts.Count -ne 2) {
+            return $null
+        }
+
+        $hours = [int]$timeParts[0]
+        $minutes = [int]$timeParts[1]
+
+        # Create a DateTime for the absolute time on the same day as start time
+        $absoluteDateTime = $startTime.Date.AddHours($hours).AddMinutes($minutes)
+
+        # If absolute time is before start time, ignore this break (return null)
+        if ($absoluteDateTime -lt $startTime) {
+            return $null
+        }
+
+        # Calculate hours difference
+        $timeSpan = $absoluteDateTime - $startTime
+        return $timeSpan.TotalHours
+    }
+    catch {
+        return $null
+    }
+}
+
+# Get the effective break deduction value (absolute or relative)
+function GetEffectiveBreakDeduction($startTime, $absoluteTime, $relativeDefault) {
+    # If no absolute time is configured, use relative default
+    if ([string]::IsNullOrWhiteSpace($absoluteTime)) {
+        return $relativeDefault
+    }
+
+    # If absolute time is configured, try to convert it
+    $relative = ConvertAbsoluteTimeToRelative $absoluteTime $startTime
+    if ($null -ne $relative) {
+        return $relative
+    }
+
+    # Absolute time is in the past - return negative number to indicate it should be ignored
+    return -1
+}
 
 # total uptime
 function getUptimeAttr($entry) {
@@ -225,12 +279,17 @@ function getIntervalAttr($entry) {
 }
 
 # booking hours
-function getBookingHoursAttr($interval) {
+function getBookingHoursAttr($interval, $startTime) {
     $netTime = $interval.totalHours
-    if ($interval.totalHours -ge $breakDeduction1) {
+
+    # Get effective break deduction values (absolute or relative)
+    $effectiveBreakDeduction1 = GetEffectiveBreakDeduction $startTime $script:breakAbsoluteTime1 $script:breakDeduction1
+    $effectiveBreakDeduction2 = GetEffectiveBreakDeduction $startTime $script:breakAbsoluteTime2 $script:breakDeduction2
+
+    if ($effectiveBreakDeduction1 -ge 0 -and $interval.totalHours -ge $effectiveBreakDeduction1) {
         $netTime -= $breakfastBreak
     }
-    if ($interval.totalHours -ge $breakDeduction2) {
+    if ($effectiveBreakDeduction2 -ge 0 -and $interval.totalHours -ge $effectiveBreakDeduction2) {
         $netTime -= $lunchBreak
     }
     [math]::Round($netTime * $precision) / $precision
@@ -250,13 +309,14 @@ function getFlexTimeAttr($bookedHours) {
 }
 # end helper functions
 
-# generate a hashmap of the abovementioned attributes
+# generate a hashmap of the above mentioned attributes
 function getLogAttrs($entry) {
+    $startTime = $entry[0][0]  # Get the start time from the first interval
     $result = @{
         uptime = getUptimeAttr $entry
         intervals = getIntervalAttr $entry
     }
-    $result.bookingHours = getBookingHoursAttr $result.uptime
+    $result.bookingHours = getBookingHoursAttr $result.uptime $startTime
     $result.flexTime = getFlexTimeAttr $result.bookingHours
     $result
 }
@@ -667,6 +727,10 @@ function Show-Widget {
 
         $startTimeHours = $startTime.TimeOfDay.TotalHours
 
+        # Get effective break deduction values (absolute or relative)
+        $effectiveBreakDeduction1 = GetEffectiveBreakDeduction $startTime $script:breakAbsoluteTime1 $breakDeduction1
+        $effectiveBreakDeduction2 = GetEffectiveBreakDeduction $startTime $script:breakAbsoluteTime2 $breakDeduction2
+
         #normal worktime
         $start = $startTimeHours
         $rotationAngle = $start * 30
@@ -696,8 +760,8 @@ function Show-Widget {
         $LineSegmentB_MaxWorktime.Point = [System.Windows.Point]::new($outerArcStartPointX,$outerArcStartPointY)
 
         #break1
-        if ($break1 -gt 0) {
-            $start = $startTimeHours + $breakDeduction1
+        if ($break1 -gt 0 -and $effectiveBreakDeduction1 -ge 0) {
+            $start = $startTimeHours + $effectiveBreakDeduction1
             $rotationAngle = $start * 30
             $end = $break1
             $wedgeAngle = $end * 30
@@ -715,8 +779,8 @@ function Show-Widget {
         }
 
         #break2
-        if ($break2 -gt 0) {
-            $start = $startTimeHours + $breakDeduction2
+        if ($break2 -gt 0 -and $effectiveBreakDeduction2 -ge 0) {
+            $start = $startTimeHours + $effectiveBreakDeduction2
             $rotationAngle = $start * 30
             $end = $break2
             $wedgeAngle = $end * 30
@@ -760,10 +824,10 @@ function Show-Widget {
         $Tooltip_MaxWorktime.Text = ((New-Object DateTime) + (New-TimeSpan -Minutes (($startTimeHours * 60) + ($maxWorkHours * 60) + ($break1 * 60) + ($break2 * 60)))).ToString("HH:mm", [Globalization.CultureInfo]::getCultureInfo($script:cultureInfo))
         $worktime = $timeDiff.TotalHours - $unplannedBreaks
         $worktimeAdj = $worktime
-        if ($worktime -ge $breakDeduction1) {
+        if ($effectiveBreakDeduction1 -ge 0 -and $worktime -ge $effectiveBreakDeduction1) {
             $worktimeAdj -= $break1
         }
-        if ($worktime -ge $breakDeduction2) {
+        if ($effectiveBreakDeduction2 -ge 0 -and $worktime -ge $effectiveBreakDeduction2) {
             $worktimeAdj -= $break2
         }
         if ($worktimeAdj -le $normalWorkHours) {
@@ -1780,12 +1844,17 @@ if (($attrs.uptime.TotalMinutes -lt 5.0) -and (Test-Path "C:\Windows.old\WINDOWS
 }
 
 if ($mode -eq 'check') {
+    # Get effective break deduction values (absolute or relative)
+    $startTime = $entry[0][0]
+    $effectiveBreakDeduction1 = GetEffectiveBreakDeduction $startTime $breakAbsoluteTime1 $breakDeduction1
+    $effectiveBreakDeduction2 = GetEffectiveBreakDeduction $startTime $breakAbsoluteTime2 $breakDeduction2
+
     $minutes = [Math]::Round($maxWorkingHours * 60) - [Math]::Round($attrs.uptime.TotalMinutes)
 
-    if ($attrs.uptime.TotalHours -ge $breakDeduction1) {
+    if ($effectiveBreakDeduction1 -ge 0 -and $attrs.uptime.TotalHours -ge $effectiveBreakDeduction1) {
         $minutes += [Math]::Round($breakfastBreak * 60)
     }
-    if ($attrs.uptime.TotalHours -ge $breakDeduction2) {
+    if ($effectiveBreakDeduction2 -ge 0 -and $attrs.uptime.TotalHours -ge $effectiveBreakDeduction2) {
         $minutes += [Math]::Round($lunchBreak * 60)
     }
 
